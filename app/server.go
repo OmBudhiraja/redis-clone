@@ -17,12 +17,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	defer l.Close()
+
 	for {
 		conn, err := l.Accept()
 
 		if err != nil {
 			log.Fatal("Error accepting connection: ", err.Error())
-			os.Exit(1)
 		}
 
 		go handleClient(conn)
@@ -31,12 +32,15 @@ func main() {
 }
 
 func handleClient(conn net.Conn) {
+	defer conn.Close()
+
 	buf := make([]byte, 1024)
 
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
-			log.Fatal("Error reading from connection: ", err.Error())
+			log.Println("Error reading from connection: ", err.Error())
+			break
 		}
 
 		fmt.Println("Message recieved: ", string(buf[:n]))
