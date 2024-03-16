@@ -1,10 +1,20 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
+	"strings"
+
+	"github.com/codecrafters-io/redis-starter-go/internal/parser"
+)
+
+const (
+	PING = "PING"
+	ECHO = "ECHO"
 )
 
 func main() {
@@ -39,12 +49,37 @@ func handleClient(conn net.Conn) {
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
-			log.Println("Error reading from connection: ", err.Error())
+			if !errors.Is(err, io.EOF) {
+				log.Println("Error reading from connection: ", err.Error())
+			}
+
 			break
 		}
 
-		fmt.Println("Message recieved: ", string(buf[:n]))
+		commands, err := parser.Deserialize(buf[:n])
 
-		conn.Write([]byte("+PONG\r\n"))
+		fmt.Println("Commands: ", commands, err)
+
+		if err != nil {
+			fmt.Println("Error parsing commands: ", err.Error())
+			continue
+		}
+
+		if len(commands) == 0 {
+			fmt.Println("No command found")
+			continue
+		}
+
+		switch strings.ToUpper(commands[0]) {
+		case PING:
+			conn.Write(parser.SerializeSimpleString("PONG"))
+		case ECHO:
+			if len(commands) > 1 {
+				conn.Write(parser.SerializeBulkString(commands[1]))
+			}
+		default:
+			conn.Write(parser.SerializeBulkString("Unknown command"))
+		}
+
 	}
 }
