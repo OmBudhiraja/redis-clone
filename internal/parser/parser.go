@@ -1,68 +1,46 @@
 package parser
 
 import (
+	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 )
 
-func getRawCommands(input []byte) []string {
-	commands := strings.Split(string(input), `\r\n`)
-	return filter(commands, func(c string) bool {
-		return c != "\n"
-	})
-}
+const (
+	CRLF_RAW = `\r\n`
+	CRLF_INT = "\r\n"
+)
 
 func Deserialize(input []byte) ([]string, error) {
-	rawCommands := getRawCommands(input)
-	rawCommandsLen := len(rawCommands)
-	var parsedCommands []string
 
-	if len(rawCommands) == 0 {
-		return nil, errors.New("no command found")
+	byteStream := bufio.NewReader(bytes.NewReader(input))
+
+	dataTypeByte, err := byteStream.ReadByte()
+
+	if err != nil {
+		return nil, err
 	}
 
-	// parse arrays
-	if input[0] == '*' {
-		_, err := strconv.Atoi(rawCommands[0][1:])
+	var commands []string
 
-		if err != nil {
-			return nil, errors.New("elements count is not a integer")
+	switch dataTypeByte {
+	case '*':
+		commands, err = parseArray(byteStream)
+	case '+':
+		commands = append(commands, parseSimpleString(byteStream))
+	case '$':
+		str, err := parseBulkString(byteStream)
+
+		if err == nil {
+			commands = append(commands, str)
 		}
-
-		for idx, command := range rawCommands[1:] {
-			if strings.HasPrefix(command, "$") {
-				parseBulkString(command, rawCommands[idx+1])
-			}
-		}
-
-		for i := 1; i < rawCommandsLen; i++ {
-			if strings.HasPrefix(rawCommands[i], "$") {
-
-				if i+1 >= rawCommandsLen {
-					return nil, errors.New("invalid command")
-				}
-
-				command, err := parseBulkString(rawCommands[i], rawCommands[i+1])
-
-				if err != nil {
-					return nil, err
-				}
-
-				parsedCommands = append(parsedCommands, command)
-
-				i++
-			} else if strings.HasPrefix(rawCommands[i], "+") {
-				parsedCommands = append(parsedCommands, rawCommands[i][1:])
-			} else {
-				fmt.Println("Unknown command")
-			}
-		}
-
 	}
 
-	return parsedCommands, nil
+	return commands, err
+
 }
 
 func SerializeBulkString(input string) []byte {
@@ -74,25 +52,86 @@ func SerializeSimpleString(input string) []byte {
 
 }
 
-// format - $<length>\r\n<data>\r\n
-func parseBulkString(command, data string) (string, error) {
-	dataLen, err := strconv.Atoi(command[1:])
+// format - *<number of elements>\r\n<elements>\r\n
+func parseArray(byteStream *bufio.Reader) ([]string, error) {
+	noOfElements, err := strconv.Atoi(readUntilCRLF(byteStream))
+
 	if err != nil {
-		return "", errors.New("invalid data length")
+		return nil, err
 	}
 
-	if dataLen != len(data) {
-		return "", errors.New("data length does not match with specified length")
+	commands := make([]string, noOfElements)
+
+	for i := 0; i < noOfElements; i++ {
+		dataTypeByte, err := byteStream.ReadByte()
+
+		if err != nil {
+			return commands, err
+		}
+
+		switch dataTypeByte {
+		case '+':
+			commands[i] = parseSimpleString(byteStream)
+		case '$':
+			str, err := parseBulkString(byteStream)
+
+			if err != nil {
+				return commands, err
+			}
+
+			commands[i] = str
+
+		default:
+			fmt.Println("Unknown type of command", dataTypeByte)
+		}
+
+	}
+
+	return commands, nil
+}
+
+// format - +<data>\r\n
+func parseSimpleString(byteStream *bufio.Reader) string {
+	return readUntilCRLF(byteStream)
+}
+
+// format - $<length>\r\n<data>\r\n
+func parseBulkString(byteStream *bufio.Reader) (string, error) {
+	length, err := strconv.Atoi(readUntilCRLF(byteStream))
+
+	if err != nil {
+		return "", err
+	}
+
+	data := readUntilCRLF(byteStream)
+
+	if len(data) != length {
+		return "", errors.New("length of data is not equal to the length specified")
 	}
 
 	return data, nil
 }
-func filter[I interface{}](arr []I, fn func(I) bool) []I {
-	result := make([]I, 0)
 
-	for _, v := range arr {
-		if fn(v) {
-			result = append(result, v)
+func readUntilCRLF(byteStream *bufio.Reader) string {
+	var result string
+	var buffer string
+
+	for {
+		b, err := byteStream.ReadByte()
+
+		if err != nil {
+			return ""
+		}
+
+		buffer += string(b)
+
+		if strings.HasSuffix(buffer, CRLF_RAW) {
+			result = buffer[:len(buffer)-len(CRLF_RAW)]
+			break
+		}
+		if strings.HasSuffix(buffer, CRLF_INT) {
+			result = buffer[:len(buffer)-len(CRLF_INT)]
+			break
 		}
 	}
 

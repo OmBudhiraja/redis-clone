@@ -66,7 +66,6 @@ func handleClient(conn net.Conn) {
 		}
 
 		if len(commands) == 0 {
-			fmt.Println("No command found")
 			continue
 		}
 
