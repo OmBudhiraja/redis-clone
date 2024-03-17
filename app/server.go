@@ -24,10 +24,51 @@ const (
 	INFO = "INFO"
 )
 
+type ServerInfo struct {
+	role       string
+	port       string
+	masterHost string
+	masterPort string
+}
+
+func getMasterPort(masterHost *string) string {
+	if *masterHost == "" {
+		return ""
+	}
+
+	for i := 0; i < len(os.Args); i++ {
+		if os.Args[i] == *masterHost {
+			if i+1 < len(os.Args) {
+				return os.Args[i+1]
+			}
+		}
+	}
+	return ""
+}
+
 func main() {
 
 	port := flag.String("port", "6379", "Port to bind to")
+	masterHost := flag.String("replicaof", "", "Host of master server")
+
 	flag.Parse()
+	masterPort := getMasterPort(masterHost)
+
+	serverInfo := ServerInfo{
+		role:       "master",
+		port:       *port,
+		masterHost: *masterHost,
+		masterPort: masterPort,
+	}
+
+	if *masterHost == "" || masterPort == "" {
+		fmt.Println("Starting as master")
+	} else {
+		serverInfo.role = "slave"
+		fmt.Println("Starting as replica of ", masterHost, ":", masterPort)
+	}
+
+	fmt.Println(flag.Args(), os.Args, *masterHost)
 
 	fmt.Println("Starting server on port: ", *port)
 
@@ -48,12 +89,12 @@ func main() {
 			log.Fatal("Error accepting connection: ", err.Error())
 		}
 
-		go handleClient(conn, kvStore)
+		go handleClient(conn, kvStore, serverInfo)
 	}
 
 }
 
-func handleClient(conn net.Conn, kvStore *store.Store) {
+func handleClient(conn net.Conn, kvStore *store.Store, serverInfo ServerInfo) {
 	defer conn.Close()
 
 	buf := make([]byte, 1024)
@@ -126,7 +167,7 @@ func handleClient(conn net.Conn, kvStore *store.Store) {
 				response = parser.SerializeBulkString(value)
 			}
 		case INFO:
-			response = parser.SerializeBulkString("role:master")
+			response = parser.SerializeBulkString("role:" + serverInfo.role)
 		default:
 			response = parser.SerializeSimpleError(fmt.Sprintf("ERR Unknown command '%s'", commands[0]))
 		}
