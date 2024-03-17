@@ -21,6 +21,7 @@ const (
 	SET  = "SET"
 	GET  = "GET"
 	PX   = "PX"
+	INFO = "INFO"
 )
 
 func main() {
@@ -124,6 +125,8 @@ func handleClient(conn net.Conn, kvStore *store.Store) {
 				value := kvStore.Get(commands[1])
 				response = parser.SerializeBulkString(value)
 			}
+		case INFO:
+			response = parser.SerializeBulkString("role:master")
 		default:
 			response = parser.SerializeSimpleError(fmt.Sprintf("ERR Unknown command '%s'", commands[0]))
 		}
