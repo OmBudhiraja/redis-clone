@@ -18,6 +18,7 @@ import (
 const (
 	PING = "PING"
 	PONG = "PONG"
+	OK   = "OK"
 	ECHO = "ECHO"
 	SET  = "SET"
 	GET  = "GET"
@@ -86,6 +87,27 @@ func connectToMaster(config ServerConfig) {
 	// Send REPLCONF command to master twice
 	conn.Write(parser.SerializeArray([]string{"REPLCONF", "listening-port", config.port}))
 	conn.Write(parser.SerializeArray([]string{"REPLCONF", "capa", "psync2"}))
+
+	// Read OK from master twice
+	for i := 0; i < 2; i++ {
+		n, err := conn.Read(buf)
+
+		if err != nil {
+			panic("Error reading from master: " + err.Error())
+		}
+
+		commands, err := parser.Deserialize(buf[:n])
+
+		if err != nil {
+			panic("Error parsing commands from master: " + err.Error())
+		}
+
+		if len(commands) != 1 || strings.ToUpper(commands[0]) != OK {
+			panic("Invalid response from master")
+		}
+	}
+
+	conn.Write(parser.SerializeArray([]string{"PSYNC", "?", "-1"}))
 
 }
 
