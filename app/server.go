@@ -24,11 +24,13 @@ const (
 	INFO = "INFO"
 )
 
-type ServerInfo struct {
-	role       string
-	port       string
-	masterHost string
-	masterPort string
+type ServerConfig struct {
+	role               string
+	port               string
+	masterHost         string
+	masterPort         string
+	master_replid      string
+	master_repl_offset int
 }
 
 func getMasterPort(masterHost *string) string {
@@ -54,17 +56,19 @@ func main() {
 	flag.Parse()
 	masterPort := getMasterPort(masterHost)
 
-	serverInfo := ServerInfo{
-		role:       "master",
-		port:       *port,
-		masterHost: *masterHost,
-		masterPort: masterPort,
+	serverConfig := ServerConfig{
+		role:               "master",
+		port:               *port,
+		masterHost:         *masterHost,
+		masterPort:         masterPort,
+		master_replid:      "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
+		master_repl_offset: 0,
 	}
 
 	if *masterHost == "" || masterPort == "" {
 		fmt.Println("Starting as master")
 	} else {
-		serverInfo.role = "slave"
+		serverConfig.role = "slave"
 		fmt.Println("Starting as replica of ", masterHost, ":", masterPort)
 	}
 
@@ -89,12 +93,12 @@ func main() {
 			log.Fatal("Error accepting connection: ", err.Error())
 		}
 
-		go handleClient(conn, kvStore, serverInfo)
+		go handleClient(conn, kvStore, serverConfig)
 	}
 
 }
 
-func handleClient(conn net.Conn, kvStore *store.Store, serverInfo ServerInfo) {
+func handleClient(conn net.Conn, kvStore *store.Store, serverConfig ServerConfig) {
 	defer conn.Close()
 
 	buf := make([]byte, 1024)
@@ -167,7 +171,12 @@ func handleClient(conn net.Conn, kvStore *store.Store, serverInfo ServerInfo) {
 				response = parser.SerializeBulkString(value)
 			}
 		case INFO:
-			response = parser.SerializeBulkString("role:" + serverInfo.role)
+			sb := strings.Builder{}
+			sb.WriteString("# Replication \n")
+			sb.WriteString("role:" + serverConfig.role + "\n")
+			sb.WriteString("master_replid:" + serverConfig.master_replid + "\n")
+			sb.WriteString(fmt.Sprintf("master_repl_offset:%d", serverConfig.master_repl_offset) + "\n")
+			response = parser.SerializeBulkString(sb.String())
 		default:
 			response = parser.SerializeSimpleError(fmt.Sprintf("ERR Unknown command '%s'", commands[0]))
 		}
