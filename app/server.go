@@ -209,9 +209,15 @@ func handleClient(conn net.Conn, kvStore *store.Store, serverConfig ServerConfig
 			sb.WriteString(fmt.Sprintf("master_repl_offset:%d", serverConfig.master_repl_offset) + "\n")
 			response = parser.SerializeBulkString(sb.String())
 		case REPLCONF:
+			if serverConfig.role == "slave" {
+				break
+			}
 			response = parser.SerializeSimpleString("OK")
 		case PSYNC:
-			response = parser.SerializeSimpleError(fmt.Sprintf("FULLRESYNC %s %d", serverConfig.master_replid, serverConfig.master_repl_offset))
+			if serverConfig.role == "slave" {
+				break
+			}
+			response = parser.SerializeSimpleString(fmt.Sprintf("FULLRESYNC %s %d", serverConfig.master_replid, serverConfig.master_repl_offset))
 		default:
 			response = parser.SerializeSimpleError(fmt.Sprintf("ERR Unknown command '%s'", commands[0]))
 		}
