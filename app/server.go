@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,38 +8,12 @@ import (
 	"log"
 	"net"
 	"os"
-	"strings"
-	"time"
 
+	"github.com/codecrafters-io/redis-starter-go/internal/command"
+	"github.com/codecrafters-io/redis-starter-go/internal/config"
 	"github.com/codecrafters-io/redis-starter-go/internal/parser"
 	"github.com/codecrafters-io/redis-starter-go/internal/store"
 )
-
-const (
-	PING     = "PING"
-	PONG     = "PONG"
-	OK       = "OK"
-	ECHO     = "ECHO"
-	SET      = "SET"
-	GET      = "GET"
-	PX       = "PX"
-	INFO     = "INFO"
-	REPLCONF = "REPLCONF"
-	PSYNC    = "PSYNC"
-)
-
-const (
-	EMPTY_RDB_HEX = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2"
-)
-
-type ServerConfig struct {
-	role               string
-	port               string
-	masterHost         string
-	masterPort         string
-	master_replid      string
-	master_repl_offset int
-}
 
 func getMasterPort(masterHost *string) string {
 	if *masterHost == "" {
@@ -57,28 +30,59 @@ func getMasterPort(masterHost *string) string {
 	return ""
 }
 
-func connectToMaster(config ServerConfig) {
-	if config.masterHost == "" || config.masterPort == "" {
+func connectToMaster(config *config.ServerConfig, kvStore *store.Store) {
+	if config.MasterHost == "" || config.MasterPort == "" {
 		panic("Master host and port are required to connect to master")
 	}
 
-	conn, err := net.Dial("tcp", config.masterHost+":"+config.masterPort)
+	conn, err := net.Dial("tcp", config.MasterHost+":"+config.MasterPort)
 
 	if err != nil {
 		panic("Error connecting to master: " + err.Error())
 	}
 
+	defer conn.Close()
+
 	// Send PING to master
-	conn.Write(parser.SerializeArray([]string{PING}))
+	conn.Write(parser.SerializeArray([]string{command.PING}))
 
 	// Send REPLCONF command to master twice
-	conn.Write(parser.SerializeArray([]string{REPLCONF, "listening-port", config.port}))
-	conn.Write(parser.SerializeArray([]string{REPLCONF, "capa", "psync2"}))
+	conn.Write(parser.SerializeArray([]string{command.REPLCONF, "listening-port", config.Port}))
+	conn.Write(parser.SerializeArray([]string{command.REPLCONF, "capa", "psync2"}))
 
 	// Send PSYNC command to master
-	conn.Write(parser.SerializeArray([]string{PSYNC, "?", "-1"}))
+	conn.Write(parser.SerializeArray([]string{command.PSYNC, "?", "-1"}))
 
 	fmt.Println("Connected to master")
+
+	// Read from master
+	buf := make([]byte, 1024)
+	for {
+		n, err := conn.Read(buf)
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				log.Println("Error reading from master: ", err.Error())
+			}
+
+			break
+		}
+
+		commands, err := parser.Deserialize(buf[:n])
+
+		if err != nil {
+			fmt.Println("Error parsing commands recieved from master: ", err.Error())
+			continue
+		}
+
+		if len(commands) == 0 {
+			continue
+		}
+
+		if commands[0] == command.SET {
+			command.Handler(commands, &conn, kvStore, config)
+		}
+
+	}
 
 }
 
@@ -90,37 +94,29 @@ func main() {
 	flag.Parse()
 	masterPort := getMasterPort(masterHost)
 
-	serverConfig := ServerConfig{
-		role:               "master",
-		port:               *port,
-		masterHost:         *masterHost,
-		masterPort:         masterPort,
-		master_replid:      "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
-		master_repl_offset: 0,
-	}
+	serverConfig := config.New(*port, *masterHost, masterPort)
 
-	fmt.Println("Starting server on port:", serverConfig.port)
-
-	if *masterHost == "" || masterPort == "" {
-		fmt.Println("Starting as master")
+	if serverConfig.MasterHost == "" || serverConfig.MasterPort == "" {
 	} else {
-		serverConfig.role = "slave"
-		fmt.Println("Starting as replica of ", serverConfig.masterHost+":"+serverConfig.masterPort)
+		serverConfig.Role = "slave"
+
 	}
 
-	if serverConfig.role == "slave" {
-		connectToMaster(serverConfig)
+	fmt.Printf("Server starting as %s on port %s\n", serverConfig.Role, serverConfig.Port)
+
+	kvStore := store.New()
+
+	if serverConfig.Role == "slave" {
+		go connectToMaster(serverConfig, kvStore)
 	}
 
-	l, err := net.Listen("tcp", "0.0.0.0:"+serverConfig.port)
+	l, err := net.Listen("tcp", "0.0.0.0:"+serverConfig.Port)
 	if err != nil {
 		fmt.Println("Failed to bind to port 6379")
 		os.Exit(1)
 	}
 
 	defer l.Close()
-
-	kvStore := store.New()
 
 	for {
 		conn, err := l.Accept()
@@ -134,7 +130,7 @@ func main() {
 
 }
 
-func handleClient(conn net.Conn, kvStore *store.Store, serverConfig ServerConfig) {
+func handleClient(conn net.Conn, kvStore *store.Store, serverConfig *config.ServerConfig) {
 	defer conn.Close()
 
 	buf := make([]byte, 1024)
@@ -162,78 +158,7 @@ func handleClient(conn net.Conn, kvStore *store.Store, serverConfig ServerConfig
 			continue
 		}
 
-		var response []byte
-
-		switch strings.ToUpper(commands[0]) {
-		case PING:
-			response = parser.SerializeSimpleString("PONG")
-		case ECHO:
-			if len(commands) != 2 {
-				response = parser.SerializeSimpleError("ERR wrong number of arguments for 'echo' command")
-			} else {
-				response = parser.SerializeBulkString(commands[1])
-			}
-		case SET:
-			if len(commands) != 3 && len(commands) != 5 {
-				response = parser.SerializeSimpleError("ERR wrong number of arguments for 'set' command")
-			} else {
-				var expiry time.Time
-
-				if len(commands) == 5 {
-					if strings.ToUpper(commands[3]) != PX {
-						response = parser.SerializeSimpleError("ERR syntax error")
-						break
-					}
-
-					expiresIn, err := time.ParseDuration(commands[4] + "ms")
-
-					if err != nil {
-						response = parser.SerializeSimpleError("ERR invalid expire time in set")
-						break
-					}
-
-					expiry = time.Now().Add(expiresIn)
-				}
-
-				kvStore.Set(commands[1], commands[2], expiry)
-				response = parser.SerializeSimpleString("OK")
-
-			}
-		case GET:
-			if len(commands) != 2 {
-				response = parser.SerializeSimpleError("ERR wrong number of arguments for 'get' command")
-			} else {
-				value := kvStore.Get(commands[1])
-				response = parser.SerializeBulkString(value)
-			}
-		case INFO:
-			sb := strings.Builder{}
-			sb.WriteString("# Replication \n")
-			sb.WriteString("role:" + serverConfig.role + "\n")
-			sb.WriteString("master_replid:" + serverConfig.master_replid + "\n")
-			sb.WriteString(fmt.Sprintf("master_repl_offset:%d", serverConfig.master_repl_offset) + "\n")
-			response = parser.SerializeBulkString(sb.String())
-		case REPLCONF:
-			if serverConfig.role == "slave" {
-				break
-			}
-			response = parser.SerializeSimpleString("OK")
-		case PSYNC:
-			if serverConfig.role == "slave" {
-				break
-			}
-			response = parser.SerializeSimpleString(fmt.Sprintf("FULLRESYNC %s %d", serverConfig.master_replid, serverConfig.master_repl_offset))
-
-			b, _ := hex.DecodeString(EMPTY_RDB_HEX)
-
-			// conn.Write([]byte(fmt.Sprintf("$%d\r\n%s", len(b), string(b))))
-			// append to response
-
-			response = append(response, []byte(fmt.Sprintf("$%d\r\n%s", len(b), string(b)))...)
-
-		default:
-			response = parser.SerializeSimpleError(fmt.Sprintf("ERR Unknown command '%s'", commands[0]))
-		}
+		response := command.Handler(commands, &conn, kvStore, serverConfig)
 
 		conn.Write(response)
 

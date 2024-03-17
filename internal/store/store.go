@@ -12,13 +12,13 @@ type Entry struct {
 
 type Store struct {
 	data  map[string]Entry
-	mutex sync.RWMutex
+	mutex *sync.RWMutex
 }
 
 func New() *Store {
 	return &Store{
 		data:  make(map[string]Entry),
-		mutex: sync.RWMutex{},
+		mutex: &sync.RWMutex{},
 	}
 }
 
