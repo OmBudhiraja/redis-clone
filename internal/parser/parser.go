@@ -2,7 +2,6 @@ package parser
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"strconv"
@@ -19,9 +18,16 @@ const (
 	RESP_ERROR         = '-'
 )
 
-func Deserialize(input []byte) ([]string, error) {
+func Deserialize(byteStream *bufio.Reader) ([]string, error) {
 
-	byteStream := bufio.NewReader(bytes.NewReader(input))
+	// help to run it locally with netcat
+	// if strings.HasPrefix(string(input), "/run") {
+	// 	cmds := strings.Split(string(input[5:]), " ")
+	// 	cmds[len(cmds)-1] = strings.TrimSuffix(cmds[len(cmds)-1], "\n")
+	// 	return cmds, nil
+	// }
+
+	// byteStream := bufio.NewReader(bytes.NewReader(input))
 
 	dataTypeByte, err := byteStream.ReadByte()
 

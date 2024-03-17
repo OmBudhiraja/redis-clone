@@ -29,7 +29,7 @@ const (
 	EMPTY_RDB_HEX = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2"
 )
 
-func Handler(cmds []string, conn *net.Conn, kvStore *store.Store, cfg *config.ServerConfig) []byte {
+func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.ServerConfig) []byte {
 
 	var response []byte
 
@@ -49,14 +49,14 @@ func Handler(cmds []string, conn *net.Conn, kvStore *store.Store, cfg *config.Se
 	case INFO:
 		response = handleInfo(cfg)
 	case REPLCONF:
-		if cfg.Role == "slave" {
+		if cfg.Role == config.RoleSlave {
 			break
 		}
 		response = parser.SerializeSimpleString("OK")
 	case PSYNC:
 		response = handlePsync(cfg, conn)
 	default:
-		parser.SerializeSimpleError(fmt.Sprintf("ERR unknown command '%s'", cmds[0]))
+		response = parser.SerializeSimpleError(fmt.Sprintf("ERR unknown command '%s'", cmds[0]))
 	}
 
 	return response
@@ -73,6 +73,7 @@ func handleGet(cmds []string, kvStore *store.Store) []byte {
 
 func handleSet(cmds []string, kvStore *store.Store, cfg *config.ServerConfig) []byte {
 	if len(cmds) != 3 && len(cmds) != 5 {
+		fmt.Println("Wrong args set", cmds)
 		return parser.SerializeSimpleError("ERR wrong number of arguments for 'set' command")
 	}
 
@@ -94,25 +95,25 @@ func handleSet(cmds []string, kvStore *store.Store, cfg *config.ServerConfig) []
 
 	kvStore.Set(cmds[1], cmds[2], expiry)
 
-	if cfg.Role == "master" {
-
-		for _, replica := range cfg.Replicas {
-			(*replica.ConnAddr).Write(parser.SerializeArray(cmds))
-		}
-
+	if cfg.Role == config.RoleMaster {
+		cfg.ReplicaWriteQueue <- cmds
 	}
 
 	return parser.SerializeSimpleString("OK")
 
 }
 
-func handlePsync(cfg *config.ServerConfig, currConnection *net.Conn) (response []byte) {
-	if cfg.Role == "slave" {
+func handlePsync(cfg *config.ServerConfig, currConnection net.Conn) (response []byte) {
+	if cfg.Role == config.RoleSlave {
 		return parser.SerializeSimpleError("ERR unknown command 'psync'")
 	}
 	response = parser.SerializeSimpleString(fmt.Sprintf("FULLRESYNC %s %d", cfg.MasterReplid, cfg.MasterReplOffset))
 
-	b, _ := hex.DecodeString(EMPTY_RDB_HEX)
+	b, err := hex.DecodeString(EMPTY_RDB_HEX)
+
+	if err != nil {
+		panic(err)
+	}
 
 	response = append(response, []byte(fmt.Sprintf("$%d\r\n%s", len(b), string(b)))...)
 
@@ -120,7 +121,7 @@ func handlePsync(cfg *config.ServerConfig, currConnection *net.Conn) (response [
 		ConnAddr: currConnection,
 	})
 
-	return
+	return response
 }
 
 func handleInfo(cfg *config.ServerConfig) []byte {
