@@ -44,12 +44,20 @@ func Deserialize(input []byte) ([]string, error) {
 }
 
 func SerializeBulkString(input string) []byte {
+	// null bulk string
+	if input == "" {
+		return []byte("$-1\r\n")
+	}
+
 	return []byte(fmt.Sprintf("$%d\r\n%s\r\n", len(input), input))
 }
 
 func SerializeSimpleString(input string) []byte {
 	return []byte(fmt.Sprintf("+%s\r\n", input))
+}
 
+func SerializeSimpleError(input string) []byte {
+	return []byte(fmt.Sprintf("-%s\r\n", input))
 }
 
 // format - *<number of elements>\r\n<elements>\r\n

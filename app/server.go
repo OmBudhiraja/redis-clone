@@ -10,11 +10,14 @@ import (
 	"strings"
 
 	"github.com/codecrafters-io/redis-starter-go/internal/parser"
+	"github.com/codecrafters-io/redis-starter-go/internal/store"
 )
 
 const (
 	PING = "PING"
 	ECHO = "ECHO"
+	SET  = "SET"
+	GET  = "GET"
 )
 
 func main() {
@@ -29,6 +32,8 @@ func main() {
 
 	defer l.Close()
 
+	kvStore := store.New()
+
 	for {
 		conn, err := l.Accept()
 
@@ -36,12 +41,12 @@ func main() {
 			log.Fatal("Error accepting connection: ", err.Error())
 		}
 
-		go handleClient(conn)
+		go handleClient(conn, kvStore)
 	}
 
 }
 
-func handleClient(conn net.Conn) {
+func handleClient(conn net.Conn, kvStore *store.Store) {
 	defer conn.Close()
 
 	buf := make([]byte, 1024)
@@ -58,27 +63,48 @@ func handleClient(conn net.Conn) {
 
 		commands, err := parser.Deserialize(buf[:n])
 
-		fmt.Println("Commands: ", commands, err)
-
 		if err != nil {
 			fmt.Println("Error parsing commands: ", err.Error())
 			continue
 		}
 
+		fmt.Println("Commands: ", commands)
+
 		if len(commands) == 0 {
 			continue
 		}
 
+		var response []byte
+
 		switch strings.ToUpper(commands[0]) {
 		case PING:
-			conn.Write(parser.SerializeSimpleString("PONG"))
+			response = parser.SerializeSimpleString("PONG")
 		case ECHO:
-			if len(commands) > 1 {
-				conn.Write(parser.SerializeBulkString(commands[1]))
+			if len(commands) != 2 {
+				response = parser.SerializeSimpleError("ERR wrong number of arguments for 'echo' command")
+			} else {
+				response = parser.SerializeBulkString(commands[1])
+			}
+		case SET:
+			if len(commands) != 3 {
+				response = parser.SerializeSimpleError("ERR wrong number of arguments for 'set' command")
+			} else {
+				kvStore.Set(commands[1], commands[2])
+				response = parser.SerializeSimpleString("OK")
+
+			}
+		case GET:
+			if len(commands) != 2 {
+				response = parser.SerializeSimpleError("ERR wrong number of arguments for 'get' command")
+			} else {
+				value := kvStore.Get(commands[1])
+				response = parser.SerializeBulkString(value)
 			}
 		default:
-			conn.Write(parser.SerializeBulkString("Unknown command"))
+			response = parser.SerializeSimpleError(fmt.Sprintf("ERR Unknown command '%s'", commands[0]))
 		}
+
+		conn.Write(response)
 
 	}
 }
