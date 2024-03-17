@@ -95,14 +95,9 @@ func handleSet(cmds []string, kvStore *store.Store, cfg *config.ServerConfig) []
 	kvStore.Set(cmds[1], cmds[2], expiry)
 
 	if cfg.Role == "master" {
-		cmdsToExecute := []string{SET, cmds[1], cmds[2]}
-
-		if len(cmds) == 5 {
-			cmdsToExecute = append(cmdsToExecute, PX, cmds[4])
-		}
 
 		for _, replica := range cfg.Replicas {
-			(*replica.ConnAddr).Write(parser.SerializeArray(cmdsToExecute))
+			(*replica.ConnAddr).Write(parser.SerializeArray(cmds))
 		}
 
 	}
