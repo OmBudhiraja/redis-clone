@@ -12,6 +12,11 @@ import (
 const (
 	CRLF_RAW = `\r\n`
 	CRLF_INT = "\r\n"
+
+	RESP_ARRAY         = '*'
+	RESP_BULK_STRING   = '$'
+	RESP_SIMPLE_STRING = '+'
+	RESP_ERROR         = '-'
 )
 
 func Deserialize(input []byte) ([]string, error) {
@@ -27,11 +32,11 @@ func Deserialize(input []byte) ([]string, error) {
 	var commands []string
 
 	switch dataTypeByte {
-	case '*':
+	case RESP_ARRAY:
 		commands, err = parseArray(byteStream)
-	case '+':
+	case RESP_SIMPLE_STRING:
 		commands = append(commands, parseSimpleString(byteStream))
-	case '$':
+	case RESP_BULK_STRING:
 		str, err := parseBulkString(byteStream)
 
 		if err == nil {
@@ -78,9 +83,9 @@ func parseArray(byteStream *bufio.Reader) ([]string, error) {
 		}
 
 		switch dataTypeByte {
-		case '+':
+		case RESP_SIMPLE_STRING:
 			commands[i] = parseSimpleString(byteStream)
-		case '$':
+		case RESP_BULK_STRING:
 			str, err := parseBulkString(byteStream)
 
 			if err != nil {

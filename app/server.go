@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/codecrafters-io/redis-starter-go/internal/parser"
 	"github.com/codecrafters-io/redis-starter-go/internal/store"
@@ -18,6 +19,7 @@ const (
 	ECHO = "ECHO"
 	SET  = "SET"
 	GET  = "GET"
+	PX   = "PX"
 )
 
 func main() {
@@ -86,10 +88,28 @@ func handleClient(conn net.Conn, kvStore *store.Store) {
 				response = parser.SerializeBulkString(commands[1])
 			}
 		case SET:
-			if len(commands) != 3 {
+			if len(commands) != 3 && len(commands) != 5 {
 				response = parser.SerializeSimpleError("ERR wrong number of arguments for 'set' command")
 			} else {
-				kvStore.Set(commands[1], commands[2])
+				var expiry time.Time
+
+				if len(commands) == 5 {
+					if strings.ToUpper(commands[3]) != PX {
+						response = parser.SerializeSimpleError("ERR syntax error")
+						break
+					}
+
+					expiresIn, err := time.ParseDuration(commands[4] + "ms")
+
+					if err != nil {
+						response = parser.SerializeSimpleError("ERR invalid expire time in set")
+						break
+					}
+
+					expiry = time.Now().Add(expiresIn)
+				}
+
+				kvStore.Set(commands[1], commands[2], expiry)
 				response = parser.SerializeSimpleString("OK")
 
 			}
