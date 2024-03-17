@@ -48,6 +48,18 @@ func Deserialize(input []byte) ([]string, error) {
 
 }
 
+func SerializeArray(input []string) []byte {
+
+	var buffer string
+
+	for _, v := range input {
+		//  SerializeBulkString(v)
+		buffer += string(SerializeBulkString(v))
+	}
+
+	return []byte(fmt.Sprintf("*%d\r\n%s", len(input), buffer))
+}
+
 func SerializeBulkString(input string) []byte {
 	// null bulk string
 	if input == "" {

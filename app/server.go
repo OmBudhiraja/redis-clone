@@ -48,6 +48,23 @@ func getMasterPort(masterHost *string) string {
 	return ""
 }
 
+func connectToMaster(config ServerConfig) {
+	if config.masterHost == "" || config.masterPort == "" {
+		panic("Master host and port are required to connect to master")
+	}
+
+	conn, err := net.Dial("tcp", config.masterHost+":"+config.masterPort)
+
+	if err != nil {
+		panic("Error connecting to master: " + err.Error())
+	}
+
+	defer conn.Close()
+
+	// Send PING to master
+	conn.Write(parser.SerializeArray([]string{PING}))
+}
+
 func main() {
 
 	port := flag.String("port", "6379", "Port to bind to")
@@ -69,12 +86,11 @@ func main() {
 		fmt.Println("Starting as master")
 	} else {
 		serverConfig.role = "slave"
+		connectToMaster(serverConfig)
 		fmt.Println("Starting as replica of ", masterHost, ":", masterPort)
 	}
 
-	fmt.Println(flag.Args(), os.Args, *masterHost)
-
-	fmt.Println("Starting server on port: ", *port)
+	fmt.Println("Starting server on port: ", serverConfig.port)
 
 	l, err := net.Listen("tcp", "0.0.0.0:"+*port)
 	if err != nil {
