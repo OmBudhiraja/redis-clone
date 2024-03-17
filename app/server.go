@@ -226,7 +226,10 @@ func handleClient(conn net.Conn, kvStore *store.Store, serverConfig ServerConfig
 
 			b, _ := hex.DecodeString(EMPTY_RDB_HEX)
 
-			conn.Write([]byte(fmt.Sprintf("$%d\r\n%s", len(b), string(b))))
+			// conn.Write([]byte(fmt.Sprintf("$%d\r\n%s", len(b), string(b))))
+			// append to response
+
+			response = append(response, []byte(fmt.Sprintf("$%d\r\n%s", len(b), string(b)))...)
 
 		default:
 			response = parser.SerializeSimpleError(fmt.Sprintf("ERR Unknown command '%s'", commands[0]))
