@@ -57,7 +57,7 @@ func handleClient(conn net.Conn, kvStore *store.Store, serverConfig *config.Serv
 
 	for {
 
-		commands, err := parser.Deserialize(reader)
+		message, err := parser.Deserialize(reader)
 
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
@@ -67,13 +67,13 @@ func handleClient(conn net.Conn, kvStore *store.Store, serverConfig *config.Serv
 			break
 		}
 
-		fmt.Println("Commands: ", commands)
+		fmt.Println("Commands: ", message.Commands)
 
-		if len(commands) == 0 {
+		if len(message.Commands) == 0 {
 			continue
 		}
 
-		response := command.Handler(commands, conn, kvStore, serverConfig)
+		response := command.Handler(message.Commands, conn, kvStore, serverConfig)
 
 		conn.Write(response)
 

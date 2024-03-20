@@ -44,7 +44,7 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 	// Read from master
 	reader := bufio.NewReader(conn)
 	for {
-		commands, err := parser.Deserialize(reader)
+		message, err := parser.Deserialize(reader)
 
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
@@ -54,14 +54,14 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 			break
 		}
 
-		fmt.Println("Commands from master: ", commands)
+		fmt.Println("Commands from master: ", message.Commands)
 
-		if len(commands) == 0 {
+		if len(message.Commands) == 0 {
 			continue
 		}
 
 		var response []byte
-		leadCommand := strings.ToUpper(commands[0])
+		leadCommand := strings.ToUpper(message.Commands[0])
 
 		if leadCommand == command.FULLRESYNC {
 			fmt.Println("Expecting RDB file")
@@ -70,15 +70,21 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 				fmt.Println("Error expecting RDB file: ", err.Error())
 				break
 			}
+			config.HandeshakeCompletedWithMaster = true
 			fmt.Println("RDB file received")
 		}
 
 		if leadCommand == command.SET || leadCommand == command.REPLCONF {
-			response = command.Handler(commands, conn, kvStore, config)
+			response = command.Handler(message.Commands, conn, kvStore, config)
 		}
 
 		if leadCommand == command.REPLCONF {
 			conn.Write(response)
+		}
+
+		// update offset
+		if config.HandeshakeCompletedWithMaster {
+			config.MasterReplOffset += message.ReadBytes
 		}
 
 	}

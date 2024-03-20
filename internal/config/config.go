@@ -16,14 +16,15 @@ type Replica struct {
 }
 
 type ServerConfig struct {
-	Role              string
-	Port              string
-	MasterHost        string
-	MasterPort        string
-	MasterReplid      string
-	MasterReplOffset  int
-	Replicas          []Replica
-	ReplicaWriteQueue chan []string
+	Role                          string
+	Port                          string
+	MasterHost                    string
+	MasterPort                    string
+	MasterReplid                  string
+	MasterReplOffset              int
+	Replicas                      []Replica
+	ReplicaWriteQueue             chan []string
+	HandeshakeCompletedWithMaster bool
 }
 
 func New() *ServerConfig {

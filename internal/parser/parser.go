@@ -18,30 +18,48 @@ const (
 	RESP_ERROR         = '-'
 )
 
-func Deserialize(byteStream *bufio.Reader) ([]string, error) {
+type Message struct {
+	ReadBytes int
+	Commands  []string
+}
+
+func Deserialize(byteStream *bufio.Reader) (Message, error) {
+
+	var message Message
+	var n int
 
 	dataTypeByte, err := byteStream.ReadByte()
 
 	if err != nil {
-		return nil, err
+		return message, err
 	}
+
+	message.ReadBytes++
 
 	var commands []string
 
 	switch dataTypeByte {
 	case RESP_ARRAY:
-		commands, err = parseArray(byteStream)
+		commands, n, err = parseArray(byteStream)
+		message.ReadBytes += n
+
 	case RESP_SIMPLE_STRING:
-		commands = append(commands, strings.Split(parseSimpleString(byteStream), " ")...)
+		res, n := parseSimpleString(byteStream)
+		commands = append(commands, strings.Split(res, " ")...)
+		message.ReadBytes += n
+
 	case RESP_BULK_STRING:
-		str, err := parseBulkString(byteStream)
+		str, n, err := parseBulkString(byteStream)
 
 		if err == nil {
 			commands = append(commands, str)
+			message.ReadBytes += n
 		}
 	}
 
-	return commands, err
+	message.Commands = commands
+
+	return message, err
 
 }
 
@@ -75,11 +93,16 @@ func SerializeSimpleError(input string) []byte {
 }
 
 // format - *<number of elements>\r\n<elements>\r\n
-func parseArray(byteStream *bufio.Reader) ([]string, error) {
-	noOfElements, err := strconv.Atoi(readUntilCRLF(byteStream))
+func parseArray(byteStream *bufio.Reader) ([]string, int, error) {
+	var bytesRead int
+
+	value, n := readUntilCRLF(byteStream)
+	bytesRead += n
+
+	noOfElements, err := strconv.Atoi(value)
 
 	if err != nil {
-		return nil, err
+		return nil, bytesRead, err
 	}
 
 	commands := make([]string, noOfElements)
@@ -88,20 +111,22 @@ func parseArray(byteStream *bufio.Reader) ([]string, error) {
 		dataTypeByte, err := byteStream.ReadByte()
 
 		if err != nil {
-			return commands, err
+			return commands, bytesRead, err
 		}
 
 		switch dataTypeByte {
 		case RESP_SIMPLE_STRING:
-			commands[i] = parseSimpleString(byteStream)
+			commands[i], n = parseSimpleString(byteStream)
+			bytesRead += n
 		case RESP_BULK_STRING:
-			str, err := parseBulkString(byteStream)
+			str, n, err := parseBulkString(byteStream)
 
 			if err != nil {
-				return commands, err
+				return commands, bytesRead, err
 			}
 
 			commands[i] = str
+			bytesRead += n
 
 		default:
 			fmt.Println("Unknown type of command", dataTypeByte)
@@ -109,29 +134,36 @@ func parseArray(byteStream *bufio.Reader) ([]string, error) {
 
 	}
 
-	return commands, nil
+	return commands, bytesRead, nil
 }
 
 // format - +<data>\r\n
-func parseSimpleString(byteStream *bufio.Reader) string {
+func parseSimpleString(byteStream *bufio.Reader) (string, int) {
 	return readUntilCRLF(byteStream)
 }
 
 // format - $<length>\r\n<data>\r\n
-func parseBulkString(byteStream *bufio.Reader) (string, error) {
-	length, err := strconv.Atoi(readUntilCRLF(byteStream))
+func parseBulkString(byteStream *bufio.Reader) (string, int, error) {
+
+	var bytesRead int
+
+	value, n := readUntilCRLF(byteStream)
+	bytesRead += n
+
+	commandLength, err := strconv.Atoi(value)
 
 	if err != nil {
-		return "", err
+		return "", bytesRead, err
 	}
 
-	data := readUntilCRLF(byteStream)
+	data, n := readUntilCRLF(byteStream)
+	bytesRead += n
 
-	if len(data) != length {
-		return "", errors.New("length of data is not equal to the length specified")
+	if len(data) != commandLength {
+		return "", bytesRead, errors.New("length of data is not equal to the length specified")
 	}
 
-	return data, nil
+	return data, bytesRead, nil
 }
 
 // rdb file format - $<length>\r\n<data> (without trailing CRLF)
@@ -146,7 +178,8 @@ func ExpectRDBFile(bytesStream *bufio.Reader) error {
 		return errors.New("expected bulk string but got byte: " + string(dataType))
 	}
 
-	bytesOfStream, err := strconv.Atoi(readUntilCRLF(bytesStream))
+	bytes, _ := readUntilCRLF(bytesStream)
+	bytesOfStream, err := strconv.Atoi(bytes)
 
 	if err != nil {
 		return err
@@ -159,16 +192,19 @@ func ExpectRDBFile(bytesStream *bufio.Reader) error {
 	return err
 }
 
-func readUntilCRLF(byteStream *bufio.Reader) string {
+func readUntilCRLF(byteStream *bufio.Reader) (string, int) {
 	var result string
 	var buffer string
 
+	var n int
 	for {
 		b, err := byteStream.ReadByte()
 
 		if err != nil {
-			return ""
+			return "", n
 		}
+
+		n++
 
 		buffer += string(b)
 
@@ -182,5 +218,5 @@ func readUntilCRLF(byteStream *bufio.Reader) string {
 		}
 	}
 
-	return result
+	return result, n
 }
