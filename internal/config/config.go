@@ -4,6 +4,7 @@ import (
 	"flag"
 	"net"
 	"os"
+	"sync"
 )
 
 const (
@@ -12,7 +13,9 @@ const (
 )
 
 type Replica struct {
-	ConnAddr net.Conn
+	ConnAddr       net.Conn
+	Offset         int
+	ExpectedOffset int
 }
 
 type ServerConfig struct {
@@ -22,9 +25,10 @@ type ServerConfig struct {
 	MasterPort                    string
 	MasterReplid                  string
 	MasterReplOffset              int
-	Replicas                      []Replica
+	Replicas                      []*Replica
 	ReplicaWriteQueue             chan []string
 	HandeshakeCompletedWithMaster bool
+	sync.RWMutex
 }
 
 func New() *ServerConfig {
@@ -49,7 +53,7 @@ func New() *ServerConfig {
 		MasterPort:        masterPort,
 		MasterReplid:      "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
 		MasterReplOffset:  0,
-		Replicas:          make([]Replica, 0),
+		Replicas:          make([]*Replica, 0),
 		ReplicaWriteQueue: make(chan []string, 100),
 	}
 }

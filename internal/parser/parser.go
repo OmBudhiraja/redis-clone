@@ -175,8 +175,6 @@ func parseBulkString(byteStream *bufio.Reader) (string, int, error) {
 		return "", bytesRead, errors.New("length of data is not equal to the length specified")
 	}
 
-	fmt.Println("Data: ", data, bytesRead)
-
 	return data, bytesRead, nil
 }
 

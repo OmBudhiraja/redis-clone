@@ -1,9 +1,11 @@
 package command
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,18 +55,11 @@ func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.Ser
 	case INFO:
 		response = handleInfo(cfg)
 	case REPLCONF:
-		response = handleRelpConf(cmds, cfg)
+		response = handleRelpConf(cmds, conn, cfg)
 	case PSYNC:
 		response = handlePsync(cfg, conn)
 	case WAIT:
-		if len(cmds) != 3 {
-			response = parser.SerializeSimpleError("ERR wrong number of arguments for 'wait' command")
-			break
-		}
-
-		// TODO: Implement wait command
-		response = parser.SerializeInteger(len(cfg.Replicas))
-
+		response = handleWait(cmds, cfg)
 	default:
 		response = parser.SerializeSimpleError(fmt.Sprintf("ERR unknown command '%s'", cmds[0]))
 	}
@@ -113,6 +108,73 @@ func handleSet(cmds []string, kvStore *store.Store, cfg *config.ServerConfig) []
 
 }
 
+func handleWait(cmds []string, cfg *config.ServerConfig) []byte {
+	if len(cmds) != 3 {
+		return parser.SerializeSimpleError("ERR wrong number of arguments for 'wait' command")
+	}
+
+	if cfg.Role == config.RoleSlave {
+		return parser.SerializeSimpleError("ERR slaves can't be issued 'wait' command")
+	}
+
+	minNoOfReplicas, err := strconv.Atoi(cmds[1])
+
+	if err != nil {
+		return parser.SerializeSimpleError("ERR number of replicas is not a number")
+	}
+
+	timeout, err := strconv.Atoi(cmds[2]) // in milliseconds
+
+	if err != nil {
+		return parser.SerializeSimpleError("ERR timeout is not a number")
+	}
+
+	var ctx context.Context
+	var ctxCancel context.CancelFunc
+
+	if timeout == 0 {
+		ctx = context.Background()
+	} else {
+		// create a context with timeout
+		ctx, ctxCancel = context.WithTimeout(context.Background(), time.Duration(timeout)*time.Millisecond)
+		defer ctxCancel()
+	}
+
+	var acksRecieved int
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+
+	// wait for ack from all replicas
+	for _, replica := range cfg.Replicas {
+		getAckCommand := parser.SerializeArray([]string{REPLCONF, GETACK, "*"})
+		go func(replica *config.Replica, ctx context.Context) {
+
+			replica.ConnAddr.Write(getAckCommand)
+		}(replica, ctx)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return parser.SerializeInteger(acksRecieved)
+		case <-ticker.C:
+			acksRecieved = 0
+
+			for _, replica := range cfg.Replicas {
+				if replica.Offset >= replica.ExpectedOffset {
+					replica.ExpectedOffset = replica.Offset
+					acksRecieved++
+				}
+			}
+			if acksRecieved >= minNoOfReplicas {
+				return parser.SerializeInteger(acksRecieved)
+			}
+
+		}
+	}
+
+}
+
 func handlePsync(cfg *config.ServerConfig, currConnection net.Conn) (response []byte) {
 	if cfg.Role == config.RoleSlave {
 		return parser.SerializeSimpleError("ERR unknown command 'psync'")
@@ -128,14 +190,17 @@ func handlePsync(cfg *config.ServerConfig, currConnection net.Conn) (response []
 	// send rdb file
 	response = append(response, []byte(fmt.Sprintf("$%d\r\n%s", len(b), string(b)))...)
 
-	cfg.Replicas = append(cfg.Replicas, config.Replica{
+	cfg.Lock()
+	defer cfg.Unlock()
+
+	cfg.Replicas = append(cfg.Replicas, &config.Replica{
 		ConnAddr: currConnection,
 	})
 
 	return response
 }
 
-func handleRelpConf(cmds []string, cfg *config.ServerConfig) (response []byte) {
+func handleRelpConf(cmds []string, conn net.Conn, cfg *config.ServerConfig) (response []byte) {
 
 	if len(cmds) < 2 {
 		return parser.SerializeSimpleError("ERR wrong number of arguments for 'replconf' command")
@@ -146,6 +211,20 @@ func handleRelpConf(cmds []string, cfg *config.ServerConfig) (response []byte) {
 		if cfg.Role == config.RoleSlave {
 			return parser.SerializeSimpleError("only master can receive ACK")
 		}
+
+		replicaOffset, err := strconv.Atoi(cmds[2])
+
+		if err != nil {
+			return parser.SerializeSimpleError("ERR invalid offset")
+		}
+
+		for _, replica := range cfg.Replicas {
+			if replica.ConnAddr.RemoteAddr().String() == conn.RemoteAddr().String() {
+				replica.Offset = replicaOffset
+				break
+			}
+		}
+
 	case GETACK:
 		if cfg.Role == config.RoleMaster {
 			return parser.SerializeSimpleError("only slave can receive GETACK")

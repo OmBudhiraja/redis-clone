@@ -2,6 +2,7 @@ package replication
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -93,11 +94,20 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 func HandleReplicaWrite(cfg *config.ServerConfig) {
 	var wg sync.WaitGroup
 	for cmds := range cfg.ReplicaWriteQueue {
+
+		setCommands := parser.SerializeArray(cmds)
+		m, err := parser.Deserialize(bufio.NewReader(bytes.NewReader(setCommands)))
+
+		if err != nil {
+			panic("Can't deserialize our own commands???")
+		}
+
 		for i, replica := range cfg.Replicas {
 			wg.Add(1)
-			go func(replica config.Replica, cmds []string, i int) {
+			go func(replica *config.Replica, cmds []string, i int) {
 				defer wg.Done()
-				replica.ConnAddr.Write(parser.SerializeArray(cmds))
+				replica.ConnAddr.Write(setCommands)
+				replica.ExpectedOffset += m.ReadBytes
 			}(replica, cmds, i)
 		}
 
