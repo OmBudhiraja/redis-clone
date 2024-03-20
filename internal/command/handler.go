@@ -13,16 +13,17 @@ import (
 )
 
 const (
-	PING     = "PING"
-	PONG     = "PONG"
-	OK       = "OK"
-	ECHO     = "ECHO"
-	SET      = "SET"
-	GET      = "GET"
-	PX       = "PX"
-	INFO     = "INFO"
-	REPLCONF = "REPLCONF"
-	PSYNC    = "PSYNC"
+	PING       = "PING"
+	PONG       = "PONG"
+	OK         = "OK"
+	ECHO       = "ECHO"
+	SET        = "SET"
+	GET        = "GET"
+	PX         = "PX"
+	INFO       = "INFO"
+	REPLCONF   = "REPLCONF"
+	PSYNC      = "PSYNC"
+	FULLRESYNC = "FULLRESYNC"
 )
 
 const (
@@ -107,7 +108,7 @@ func handlePsync(cfg *config.ServerConfig, currConnection net.Conn) (response []
 	if cfg.Role == config.RoleSlave {
 		return parser.SerializeSimpleError("ERR unknown command 'psync'")
 	}
-	response = parser.SerializeSimpleString(fmt.Sprintf("FULLRESYNC %s %d", cfg.MasterReplid, cfg.MasterReplOffset))
+	response = parser.SerializeSimpleString(fmt.Sprintf("%s %s %d", FULLRESYNC, cfg.MasterReplid, cfg.MasterReplOffset))
 
 	b, err := hex.DecodeString(EMPTY_RDB_HEX)
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 
 	"github.com/codecrafters-io/redis-starter-go/internal/command"
@@ -43,10 +44,7 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 	// Read from master
 	reader := bufio.NewReader(conn)
 	for {
-
 		commands, err := parser.Deserialize(reader)
-
-		fmt.Println("Commands from master: ", commands)
 
 		if err != nil {
 
@@ -57,11 +55,23 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 			break
 		}
 
+		fmt.Println("Commands from master: ", commands)
+
 		if len(commands) == 0 {
 			continue
 		}
 
-		if commands[0] == command.SET {
+		if strings.ToUpper(commands[0]) == command.FULLRESYNC {
+			fmt.Println("Expecting RDB file")
+			err := parser.ExpectRDBFile(reader)
+			if err != nil {
+				fmt.Println("Error expecting RDB file: ", err.Error())
+				break
+			}
+			fmt.Println("RDB file received")
+		}
+
+		if strings.ToUpper(commands[0]) == command.SET {
 			command.Handler(commands, conn, kvStore, config)
 		}
 

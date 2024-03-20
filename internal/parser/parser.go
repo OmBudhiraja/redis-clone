@@ -20,15 +20,6 @@ const (
 
 func Deserialize(byteStream *bufio.Reader) ([]string, error) {
 
-	// help to run it locally with netcat
-	// if strings.HasPrefix(string(input), "/run") {
-	// 	cmds := strings.Split(string(input[5:]), " ")
-	// 	cmds[len(cmds)-1] = strings.TrimSuffix(cmds[len(cmds)-1], "\n")
-	// 	return cmds, nil
-	// }
-
-	// byteStream := bufio.NewReader(bytes.NewReader(input))
-
 	dataTypeByte, err := byteStream.ReadByte()
 
 	if err != nil {
@@ -41,7 +32,7 @@ func Deserialize(byteStream *bufio.Reader) ([]string, error) {
 	case RESP_ARRAY:
 		commands, err = parseArray(byteStream)
 	case RESP_SIMPLE_STRING:
-		commands = append(commands, parseSimpleString(byteStream))
+		commands = append(commands, strings.Split(parseSimpleString(byteStream), " ")...)
 	case RESP_BULK_STRING:
 		str, err := parseBulkString(byteStream)
 
@@ -141,6 +132,31 @@ func parseBulkString(byteStream *bufio.Reader) (string, error) {
 	}
 
 	return data, nil
+}
+
+// rdb file format - $<length>\r\n<data> (without trailing CRLF)
+func ExpectRDBFile(bytesStream *bufio.Reader) error {
+	dataType, err := bytesStream.ReadByte()
+
+	if err != nil {
+		return err
+	}
+
+	if dataType != RESP_BULK_STRING {
+		return errors.New("expected bulk string but got byte: " + string(dataType))
+	}
+
+	bytesOfStream, err := strconv.Atoi(readUntilCRLF(bytesStream))
+
+	if err != nil {
+		return err
+	}
+
+	rdbBuffer := make([]byte, bytesOfStream)
+
+	_, err = bytesStream.Read(rdbBuffer)
+
+	return err
 }
 
 func readUntilCRLF(byteStream *bufio.Reader) string {
