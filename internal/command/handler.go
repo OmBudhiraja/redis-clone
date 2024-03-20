@@ -140,7 +140,8 @@ func handleRelpConf(cmds []string, cfg *config.ServerConfig) (response []byte) {
 		if cfg.Role == config.RoleMaster {
 			return parser.SerializeSimpleError("only slave can receive GETACK")
 		}
-		response = parser.SerializeArray([]string{REPLCONF, "ACK", "0"})
+		offset := fmt.Sprintf("%d", cfg.MasterReplOffset)
+		response = parser.SerializeArray([]string{REPLCONF, "ACK", offset})
 	default:
 		response = parser.SerializeSimpleString("OK")
 	}
