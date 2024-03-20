@@ -24,6 +24,8 @@ const (
 	REPLCONF   = "REPLCONF"
 	PSYNC      = "PSYNC"
 	FULLRESYNC = "FULLRESYNC"
+	ACK        = "ACK"
+	GETACK     = "GETACK"
 )
 
 const (
@@ -50,10 +52,7 @@ func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.Ser
 	case INFO:
 		response = handleInfo(cfg)
 	case REPLCONF:
-		if cfg.Role == config.RoleSlave {
-			break
-		}
-		response = parser.SerializeSimpleString("OK")
+		response = handleRelpConf(cmds, cfg)
 	case PSYNC:
 		response = handlePsync(cfg, conn)
 	default:
@@ -116,11 +115,35 @@ func handlePsync(cfg *config.ServerConfig, currConnection net.Conn) (response []
 		panic(err)
 	}
 
+	// send rdb file
 	response = append(response, []byte(fmt.Sprintf("$%d\r\n%s", len(b), string(b)))...)
 
 	cfg.Replicas = append(cfg.Replicas, config.Replica{
 		ConnAddr: currConnection,
 	})
+
+	return response
+}
+
+func handleRelpConf(cmds []string, cfg *config.ServerConfig) (response []byte) {
+
+	if len(cmds) < 2 {
+		return parser.SerializeSimpleError("ERR wrong number of arguments for 'replconf' command")
+	}
+
+	switch strings.ToUpper(cmds[1]) {
+	case ACK:
+		if cfg.Role == config.RoleSlave {
+			return parser.SerializeSimpleError("only master can receive ACK")
+		}
+	case GETACK:
+		if cfg.Role == config.RoleMaster {
+			return parser.SerializeSimpleError("only slave can receive GETACK")
+		}
+		response = parser.SerializeArray([]string{REPLCONF, "ACK", "0"})
+	default:
+		response = parser.SerializeSimpleString("OK")
+	}
 
 	return response
 }

@@ -47,7 +47,6 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 		commands, err := parser.Deserialize(reader)
 
 		if err != nil {
-
 			if !errors.Is(err, io.EOF) {
 				fmt.Println("Error parsing commands recieved from master: ", err.Error())
 			}
@@ -61,7 +60,10 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 			continue
 		}
 
-		if strings.ToUpper(commands[0]) == command.FULLRESYNC {
+		var response []byte
+		leadCommand := strings.ToUpper(commands[0])
+
+		if leadCommand == command.FULLRESYNC {
 			fmt.Println("Expecting RDB file")
 			err := parser.ExpectRDBFile(reader)
 			if err != nil {
@@ -71,8 +73,12 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 			fmt.Println("RDB file received")
 		}
 
-		if strings.ToUpper(commands[0]) == command.SET {
-			command.Handler(commands, conn, kvStore, config)
+		if leadCommand == command.SET || leadCommand == command.REPLCONF {
+			response = command.Handler(commands, conn, kvStore, config)
+		}
+
+		if leadCommand == command.REPLCONF {
+			conn.Write(response)
 		}
 
 	}
