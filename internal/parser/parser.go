@@ -109,6 +109,7 @@ func parseArray(byteStream *bufio.Reader) ([]string, int, error) {
 
 	for i := 0; i < noOfElements; i++ {
 		dataTypeByte, err := byteStream.ReadByte()
+		bytesRead++
 
 		if err != nil {
 			return commands, bytesRead, err
@@ -162,6 +163,8 @@ func parseBulkString(byteStream *bufio.Reader) (string, int, error) {
 	if len(data) != commandLength {
 		return "", bytesRead, errors.New("length of data is not equal to the length specified")
 	}
+
+	fmt.Println("Data: ", data, bytesRead)
 
 	return data, bytesRead, nil
 }
