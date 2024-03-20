@@ -63,12 +63,6 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 		var response []byte
 		leadCommand := strings.ToUpper(message.Commands[0])
 
-		// update offset
-		if config.HandeshakeCompletedWithMaster {
-			fmt.Println("Updating offset", config.MasterReplOffset, message.ReadBytes, message.Commands)
-			config.MasterReplOffset += message.ReadBytes
-		}
-
 		if leadCommand == command.FULLRESYNC {
 			fmt.Println("Expecting RDB file")
 			err := parser.ExpectRDBFile(reader)
@@ -84,6 +78,12 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 
 		if leadCommand == command.REPLCONF {
 			conn.Write(response)
+		}
+
+		// update offset
+		if config.HandeshakeCompletedWithMaster {
+			fmt.Println("Updating offset", config.MasterReplOffset, message.ReadBytes, message.Commands)
+			config.MasterReplOffset += message.ReadBytes
 		}
 
 	}
