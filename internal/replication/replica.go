@@ -72,6 +72,7 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 			}
 			config.HandeshakeCompletedWithMaster = true
 			fmt.Println("RDB file received")
+			continue
 		}
 
 		response = command.Handler(message.Commands, conn, kvStore, config)
