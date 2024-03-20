@@ -15,6 +15,7 @@ const (
 	RESP_ARRAY         = '*'
 	RESP_BULK_STRING   = '$'
 	RESP_SIMPLE_STRING = '+'
+	RESP_INTEGER       = ':'
 	RESP_ERROR         = '-'
 )
 
@@ -55,6 +56,12 @@ func Deserialize(byteStream *bufio.Reader) (Message, error) {
 			commands = append(commands, str)
 			message.ReadBytes += n
 		}
+	case RESP_INTEGER:
+		_, n, err := parseInteger(byteStream)
+		if err == nil {
+			message.ReadBytes += n
+		}
+
 	}
 
 	message.Commands = commands
@@ -86,6 +93,10 @@ func SerializeBulkString(input string) []byte {
 
 func SerializeSimpleString(input string) []byte {
 	return []byte(fmt.Sprintf("+%s\r\n", input))
+}
+
+func SerializeInteger(input int) []byte {
+	return []byte(fmt.Sprintf(":%d\r\n", input))
 }
 
 func SerializeSimpleError(input string) []byte {
@@ -167,6 +178,15 @@ func parseBulkString(byteStream *bufio.Reader) (string, int, error) {
 	fmt.Println("Data: ", data, bytesRead)
 
 	return data, bytesRead, nil
+}
+
+func parseInteger(byteStream *bufio.Reader) (int, int, error) {
+	value, n := readUntilCRLF(byteStream)
+
+	intValue, err := strconv.Atoi(value)
+
+	return intValue, n, err
+
 }
 
 // rdb file format - $<length>\r\n<data> (without trailing CRLF)

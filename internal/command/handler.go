@@ -26,6 +26,7 @@ const (
 	FULLRESYNC = "FULLRESYNC"
 	ACK        = "ACK"
 	GETACK     = "GETACK"
+	WAIT       = "WAIT"
 )
 
 const (
@@ -55,6 +56,15 @@ func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.Ser
 		response = handleRelpConf(cmds, cfg)
 	case PSYNC:
 		response = handlePsync(cfg, conn)
+	case WAIT:
+		if len(cmds) != 3 {
+			response = parser.SerializeSimpleError("ERR wrong number of arguments for 'wait' command")
+			break
+		}
+
+		// TODO: Implement wait command
+		response = parser.SerializeInteger(len(cfg.Replicas))
+
 	default:
 		response = parser.SerializeSimpleError(fmt.Sprintf("ERR unknown command '%s'", cmds[0]))
 	}
