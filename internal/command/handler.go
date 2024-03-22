@@ -29,6 +29,7 @@ const (
 	ACK        = "ACK"
 	GETACK     = "GETACK"
 	WAIT       = "WAIT"
+	CONFIG     = "CONFIG"
 )
 
 const (
@@ -60,6 +61,8 @@ func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.Ser
 		response = handlePsync(cfg, conn)
 	case WAIT:
 		response = handleWait(cmds, cfg)
+	case CONFIG:
+		response = handleConfig(cmds, cfg)
 	default:
 		response = parser.SerializeSimpleError(fmt.Sprintf("ERR unknown command '%s'", cmds[0]))
 	}
@@ -236,6 +239,26 @@ func handleRelpConf(cmds []string, conn net.Conn, cfg *config.ServerConfig) (res
 	}
 
 	return response
+}
+
+func handleConfig(cmds []string, cfg *config.ServerConfig) []byte {
+	if len(cmds) != 3 {
+		return parser.SerializeSimpleError("ERR wrong number of arguments for 'config' command")
+	}
+
+	if strings.ToUpper(cmds[1]) != "GET" {
+		return parser.SerializeSimpleError("ERR unsupported subcommand for 'config' command")
+	}
+
+	switch strings.ToUpper(cmds[2]) {
+	case "DIR":
+		return parser.SerializeArray([]string{"dir", cfg.RDBDir})
+	case "DBFILENAME":
+		return parser.SerializeArray([]string{"dbfilename", cfg.RDBFileName})
+	default:
+		return parser.SerializeSimpleError("ERR unsupported CONFIG parameter")
+	}
+
 }
 
 func handleInfo(cfg *config.ServerConfig) []byte {

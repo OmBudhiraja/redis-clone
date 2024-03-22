@@ -21,6 +21,8 @@ type Replica struct {
 type ServerConfig struct {
 	Role                          string
 	Port                          string
+	RDBDir                        string
+	RDBFileName                   string
 	MasterHost                    string
 	MasterPort                    string
 	MasterReplid                  string
@@ -34,6 +36,9 @@ type ServerConfig struct {
 func New() *ServerConfig {
 	port := flag.String("port", "6379", "Port to bind to")
 	masterHost := flag.String("replicaof", "", "Host of master server")
+
+	rdbFileDir := flag.String("dir", "", "Directory to store RDB file")
+	rdbFileName := flag.String("dbfilename", "", "Name of RDB file")
 
 	flag.Parse()
 
@@ -49,6 +54,8 @@ func New() *ServerConfig {
 	return &ServerConfig{
 		Role:              role,
 		Port:              *port,
+		RDBDir:            *rdbFileDir,
+		RDBFileName:       *rdbFileName,
 		MasterHost:        *masterHost,
 		MasterPort:        masterPort,
 		MasterReplid:      "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
