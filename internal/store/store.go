@@ -3,21 +3,18 @@ package store
 import (
 	"sync"
 	"time"
+
+	"github.com/codecrafters-io/redis-starter-go/internal/rdb"
 )
 
-type Entry struct {
-	value  string
-	expiry time.Time
-}
-
 type Store struct {
-	data  map[string]Entry
+	data  map[string]rdb.Entry
 	mutex *sync.RWMutex
 }
 
-func New() *Store {
+func New(file *rdb.RDBFile) *Store {
 	return &Store{
-		data:  make(map[string]Entry),
+		data:  file.Items,
 		mutex: &sync.RWMutex{},
 	}
 }
@@ -26,9 +23,9 @@ func (s *Store) Set(key, value string, expiry time.Time) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	s.data[key] = Entry{
-		value:  value,
-		expiry: expiry,
+	s.data[key] = rdb.Entry{
+		Value:  value,
+		Expiry: expiry,
 	}
 }
 
@@ -42,14 +39,30 @@ func (s *Store) Get(key string) string {
 		return ""
 	}
 
-	if entry.expiry.IsZero() {
-		return entry.value
+	if entry.Expiry.IsZero() {
+		return entry.Value
 	}
 
-	if time.Now().After(entry.expiry) {
+	if time.Now().After(entry.Expiry) {
 		delete(s.data, key)
 		return ""
 	}
 
-	return entry.value
+	return entry.Value
+}
+
+func (s *Store) GetKeysWithPattern(pattern string) []string {
+
+	// TODO: Implement other patters
+	if pattern != "*" {
+		return []string{}
+	}
+
+	keys := []string{}
+
+	for key := range s.data {
+		keys = append(keys, key)
+	}
+
+	return keys
 }

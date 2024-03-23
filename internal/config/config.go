@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"fmt"
 	"net"
 	"os"
 	"sync"
@@ -31,6 +32,22 @@ type ServerConfig struct {
 	ReplicaWriteQueue             chan []string
 	HandeshakeCompletedWithMaster bool
 	sync.RWMutex
+}
+
+func (c *ServerConfig) AddReplica(conn net.Conn) {
+	c.Lock()
+	defer c.Unlock()
+	c.Replicas = append(c.Replicas, &Replica{
+		ConnAddr: conn,
+	})
+}
+
+func (c *ServerConfig) GetRDBFilePath() string {
+	if c.RDBDir == "" || c.RDBFileName == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s/%s", c.RDBDir, c.RDBFileName)
 }
 
 func New() *ServerConfig {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/codecrafters-io/redis-starter-go/internal/config"
 	"github.com/codecrafters-io/redis-starter-go/internal/parser"
+	"github.com/codecrafters-io/redis-starter-go/internal/rdb"
 	"github.com/codecrafters-io/redis-starter-go/internal/store"
 )
 
@@ -30,10 +31,7 @@ const (
 	GETACK     = "GETACK"
 	WAIT       = "WAIT"
 	CONFIG     = "CONFIG"
-)
-
-const (
-	EMPTY_RDB_HEX = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2"
+	KEYS       = "KEYS"
 )
 
 func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.ServerConfig) []byte {
@@ -42,9 +40,9 @@ func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.Ser
 
 	switch strings.ToUpper(cmds[0]) {
 	case GET:
-		response = handleGet(cmds, kvStore)
+		response = handleGetCommand(cmds, kvStore)
 	case SET:
-		response = handleSet(cmds, kvStore, cfg)
+		response = handleSetCommand(cmds, kvStore, cfg)
 	case PING:
 		response = parser.SerializeSimpleString("PONG")
 	case ECHO:
@@ -54,15 +52,17 @@ func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.Ser
 			response = parser.SerializeBulkString(cmds[1])
 		}
 	case INFO:
-		response = handleInfo(cfg)
+		response = handleInfoCommand(cfg)
 	case REPLCONF:
-		response = handleRelpConf(cmds, conn, cfg)
+		response = handleRelpConfCommand(cmds, conn, cfg)
 	case PSYNC:
-		response = handlePsync(cfg, conn)
+		response = handlePsyncCommand(cfg, conn)
 	case WAIT:
-		response = handleWait(cmds, cfg)
+		response = handleWaitCommand(cmds, cfg)
+	case KEYS:
+		response = handleKeysCommand(cmds, kvStore)
 	case CONFIG:
-		response = handleConfig(cmds, cfg)
+		response = handleConfigCommand(cmds, cfg)
 	default:
 		response = parser.SerializeSimpleError(fmt.Sprintf("ERR unknown command '%s'", cmds[0]))
 	}
@@ -70,7 +70,7 @@ func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.Ser
 	return response
 }
 
-func handleGet(cmds []string, kvStore *store.Store) []byte {
+func handleGetCommand(cmds []string, kvStore *store.Store) []byte {
 	if len(cmds) != 2 {
 		return parser.SerializeSimpleError("ERR wrong number of arguments for 'get' command")
 	} else {
@@ -79,7 +79,7 @@ func handleGet(cmds []string, kvStore *store.Store) []byte {
 	}
 }
 
-func handleSet(cmds []string, kvStore *store.Store, cfg *config.ServerConfig) []byte {
+func handleSetCommand(cmds []string, kvStore *store.Store, cfg *config.ServerConfig) []byte {
 	if len(cmds) != 3 && len(cmds) != 5 {
 		fmt.Println("Wrong args set", cmds)
 		return parser.SerializeSimpleError("ERR wrong number of arguments for 'set' command")
@@ -111,7 +111,7 @@ func handleSet(cmds []string, kvStore *store.Store, cfg *config.ServerConfig) []
 
 }
 
-func handleWait(cmds []string, cfg *config.ServerConfig) []byte {
+func handleWaitCommand(cmds []string, cfg *config.ServerConfig) []byte {
 	if len(cmds) != 3 {
 		return parser.SerializeSimpleError("ERR wrong number of arguments for 'wait' command")
 	}
@@ -178,13 +178,23 @@ func handleWait(cmds []string, cfg *config.ServerConfig) []byte {
 
 }
 
-func handlePsync(cfg *config.ServerConfig, currConnection net.Conn) (response []byte) {
+func handleKeysCommand(cmds []string, kvStore *store.Store) []byte {
+	fmt.Println("keys command", cmds)
+
+	if len(cmds) != 2 {
+		return parser.SerializeSimpleError("Err wrong number of arguments for 'keys' command")
+	}
+
+	return parser.SerializeArray(kvStore.GetKeysWithPattern(cmds[1]))
+}
+
+func handlePsyncCommand(cfg *config.ServerConfig, currConnection net.Conn) (response []byte) {
 	if cfg.Role == config.RoleSlave {
 		return parser.SerializeSimpleError("ERR unknown command 'psync'")
 	}
 	response = parser.SerializeSimpleString(fmt.Sprintf("%s %s %d", FULLRESYNC, cfg.MasterReplid, cfg.MasterReplOffset))
 
-	b, err := hex.DecodeString(EMPTY_RDB_HEX)
+	b, err := hex.DecodeString(rdb.EMPTY_RDB_HEX)
 
 	if err != nil {
 		panic(err)
@@ -193,17 +203,12 @@ func handlePsync(cfg *config.ServerConfig, currConnection net.Conn) (response []
 	// send rdb file
 	response = append(response, []byte(fmt.Sprintf("$%d\r\n%s", len(b), string(b)))...)
 
-	cfg.Lock()
-	defer cfg.Unlock()
-
-	cfg.Replicas = append(cfg.Replicas, &config.Replica{
-		ConnAddr: currConnection,
-	})
+	cfg.AddReplica(currConnection)
 
 	return response
 }
 
-func handleRelpConf(cmds []string, conn net.Conn, cfg *config.ServerConfig) (response []byte) {
+func handleRelpConfCommand(cmds []string, conn net.Conn, cfg *config.ServerConfig) (response []byte) {
 
 	if len(cmds) < 2 {
 		return parser.SerializeSimpleError("ERR wrong number of arguments for 'replconf' command")
@@ -241,7 +246,7 @@ func handleRelpConf(cmds []string, conn net.Conn, cfg *config.ServerConfig) (res
 	return response
 }
 
-func handleConfig(cmds []string, cfg *config.ServerConfig) []byte {
+func handleConfigCommand(cmds []string, cfg *config.ServerConfig) []byte {
 	if len(cmds) != 3 {
 		return parser.SerializeSimpleError("ERR wrong number of arguments for 'config' command")
 	}
@@ -258,10 +263,9 @@ func handleConfig(cmds []string, cfg *config.ServerConfig) []byte {
 	default:
 		return parser.SerializeSimpleError("ERR unsupported CONFIG parameter")
 	}
-
 }
 
-func handleInfo(cfg *config.ServerConfig) []byte {
+func handleInfoCommand(cfg *config.ServerConfig) []byte {
 	sb := strings.Builder{}
 	sb.WriteString("# Replication \n")
 	sb.WriteString("role:" + cfg.Role + "\n")
