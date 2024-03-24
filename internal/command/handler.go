@@ -32,6 +32,7 @@ const (
 	WAIT       = "WAIT"
 	CONFIG     = "CONFIG"
 	KEYS       = "KEYS"
+	TYPE       = "TYPE"
 )
 
 func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.ServerConfig) []byte {
@@ -61,6 +62,8 @@ func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.Ser
 		response = handleWaitCommand(cmds, cfg)
 	case KEYS:
 		response = handleKeysCommand(cmds, kvStore)
+	case TYPE:
+		response = handleTypeCommand(cmds, kvStore)
 	case CONFIG:
 		response = handleConfigCommand(cmds, cfg)
 	default:
@@ -73,10 +76,11 @@ func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.Ser
 func handleGetCommand(cmds []string, kvStore *store.Store) []byte {
 	if len(cmds) != 2 {
 		return parser.SerializeSimpleError("ERR wrong number of arguments for 'get' command")
-	} else {
-		value := kvStore.Get(cmds[1])
-		return parser.SerializeBulkString(value)
 	}
+
+	value := kvStore.Get(cmds[1])
+	return parser.SerializeBulkString(value)
+
 }
 
 func handleSetCommand(cmds []string, kvStore *store.Store, cfg *config.ServerConfig) []byte {
@@ -186,6 +190,21 @@ func handleKeysCommand(cmds []string, kvStore *store.Store) []byte {
 	}
 
 	return parser.SerializeArray(kvStore.GetKeysWithPattern(cmds[1]))
+}
+
+func handleTypeCommand(cmds []string, kvStore *store.Store) []byte {
+	if len(cmds) != 2 {
+		return parser.SerializeSimpleError("ERR wrong number of arguments for 'type' command")
+	}
+
+	value := kvStore.Get(cmds[1])
+
+	if value == "" {
+		return parser.SerializeSimpleString("none")
+
+	}
+
+	return parser.SerializeSimpleString("string")
 }
 
 func handlePsyncCommand(cfg *config.ServerConfig, currConnection net.Conn) (response []byte) {
