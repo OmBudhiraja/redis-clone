@@ -111,21 +111,33 @@ outerLoop:
 			fmt.Println("EOF")
 			break outerLoop
 
-		case opEXPIRETIME:
-			panic("Not yet implemented")
-
-		case opEXPIRETIMEMS:
-			panic("Not yet implemented")
-
 		default:
-			valueType := code
+			var expiration time.Time
+			var valueType byte
+
+			if code == opEXPIRETIMEMS {
+				bytes := readBytes(reader, 8)
+				expiration = time.UnixMilli(int64(binary.LittleEndian.Uint64(bytes)))
+				valueType = readByte(reader)
+			} else if code == opEXPIRETIME {
+				bytes := readBytes(reader, 4)
+				expiration = time.Unix(int64(binary.LittleEndian.Uint32(bytes)), 0)
+				valueType = readByte(reader)
+			} else {
+				valueType = code
+			}
+
 			key := readString(reader)
 			switch valueType {
 			case 0: // strings
 				value := readString(reader)
-				rdbFile.Items[key] = Entry{
-					Value:  value,
-					Expiry: time.Time{},
+
+				// skip expired keys
+				if expiration.IsZero() || expiration.After(time.Now()) {
+					rdbFile.Items[key] = Entry{
+						Value:  value,
+						Expiry: expiration,
+					}
 				}
 			default:
 				panic(fmt.Sprintf("unknown value type: %08b", valueType))
