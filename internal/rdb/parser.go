@@ -172,7 +172,7 @@ func readInteger(reader *bufio.Reader) int {
 	// Discard the remaining 6 bits. The next 4 bytes from the stream represent the length
 	case 0b1000_0000:
 		next4Bytes := readBytes(reader, 4)
-		return int(binary.BigEndian.Uint32(next4Bytes))
+		return int(binary.LittleEndian.Uint32(next4Bytes))
 
 	// The next object is encoded in a special format. The remaining 6 bits indicate the format. May be used to store numbers or Strings
 	case 0b1100_0000:
@@ -180,9 +180,9 @@ func readInteger(reader *bufio.Reader) int {
 		case 0:
 			return int(readByte(reader))
 		case 1:
-			return int(binary.BigEndian.Uint16(readBytes(reader, 2)))
+			return int(binary.LittleEndian.Uint16(readBytes(reader, 2)))
 		case 2:
-			return int(binary.BigEndian.Uint32(readBytes(reader, 4)))
+			return int(binary.LittleEndian.Uint32(readBytes(reader, 4)))
 		default:
 			panic(fmt.Sprintf("integer encoding does not YET handle: %08b", lastSixBits))
 		}
