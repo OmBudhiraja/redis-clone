@@ -31,11 +31,11 @@ func ConnectToMaster(config *config.ServerConfig, kvStore *store.Store) {
 	defer conn.Close()
 
 	// Send PING to master
-	conn.Write(parser.SerializeArray([]string{command.PING}))
+	writeAndExpect(conn, parser.SerializeArray([]string{command.PING}), command.PONG)
 
 	// Send REPLCONF command to master twice
-	conn.Write(parser.SerializeArray([]string{command.REPLCONF, "listening-port", config.Port}))
-	conn.Write(parser.SerializeArray([]string{command.REPLCONF, "capa", "psync2"}))
+	writeAndExpect(conn, parser.SerializeArray([]string{command.REPLCONF, "listening-port", config.Port}), command.OK)
+	writeAndExpect(conn, parser.SerializeArray([]string{command.REPLCONF, "capa", "psync2"}), command.OK)
 
 	// Send PSYNC command to master
 	conn.Write(parser.SerializeArray([]string{command.PSYNC, "?", "-1"}))
@@ -113,4 +113,23 @@ func HandleReplicaWrite(cfg *config.ServerConfig) {
 
 		wg.Wait()
 	}
+}
+
+func writeAndExpect(conn net.Conn, cmd []byte, expect string) (err error) {
+	conn.Write(cmd)
+	reader := bufio.NewReader(conn)
+	message, err := parser.Deserialize(reader)
+	if err != nil {
+		return err
+	}
+
+	if len(message.Commands) == 0 {
+		return errors.New("no commands received")
+	}
+
+	if strings.ToUpper(message.Commands[0]) != expect {
+		return errors.New("Expected " + expect + " but got " + message.Commands[0])
+	}
+
+	return nil
 }
