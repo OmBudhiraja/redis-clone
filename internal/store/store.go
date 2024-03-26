@@ -34,7 +34,7 @@ func (s *Store) Set(key, value string, expiry time.Time) {
 	}
 }
 
-func (s *Store) XAdd(streamKey, entryId string, entries []string) error {
+func (s *Store) XAdd(streamKey, entryId string, entries []string) (string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -46,14 +46,14 @@ func (s *Store) XAdd(streamKey, entryId string, entries []string) error {
 			Values:   []*datatypes.Entry{},
 		}
 	}
-	err := stream.AddEntry(entryId, entries)
+	id, err := stream.AddEntry(entryId, entries)
 
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	s.data[streamKey] = stream
-	return nil
+	return id, nil
 }
 
 func (s *Store) Get(key string) string {

@@ -23,16 +23,16 @@ func (s *Stream) GetType() string {
 	return s.DataType
 }
 
-func (s *Stream) AddEntry(entryId string, pairs []string) error {
+func (s *Stream) AddEntry(entryId string, pairs []string) (string, error) {
 
 	majorId, minorId, err := s.parseEntryId(entryId)
 
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	entry := &Entry{
-		Id:      entryId,
+		Id:      fmt.Sprintf("%d-%d", majorId, minorId),
 		Values:  make(map[string]string),
 		majorId: majorId,
 		minorId: minorId,
@@ -43,7 +43,7 @@ func (s *Stream) AddEntry(entryId string, pairs []string) error {
 	}
 
 	s.Values = append(s.Values, entry)
-	return nil
+	return entry.Id, nil
 }
 
 func (s *Stream) parseEntryId(id string) (int, int, error) {
@@ -62,6 +62,11 @@ func (s *Stream) parseEntryId(id string) (int, int, error) {
 
 	if err != nil {
 		return 0, 0, errors.New("invalid entry id")
+	}
+
+	if entryId[1] == "*" {
+		// minorId := 0
+		return s.generateMinorEntryId(majorId)
 	}
 
 	minorId, err := strconv.Atoi(entryId[1])
@@ -97,5 +102,32 @@ func (s *Stream) parseEntryId(id string) (int, int, error) {
 }
 
 func (s *Stream) generateNewEntryId() (int, int, error) {
+	// TODO: Implement this
 	return 0, 0, nil
+}
+
+func (s *Stream) generateMinorEntryId(majorId int) (int, int, error) {
+	if len(s.Values) == 0 {
+		if majorId == 0 {
+			return majorId, 1, nil
+		}
+
+		return majorId, 0, nil
+	}
+
+	lastEntry := s.Values[len(s.Values)-1]
+
+	if lastEntry == nil {
+		panic("last entry is nil??")
+	}
+
+	if majorId < lastEntry.majorId {
+		return 0, 0, fmt.Errorf("ERR The ID specified in XADD is equal or smaller than the target stream top item")
+	}
+
+	if majorId == lastEntry.majorId {
+		return majorId, lastEntry.minorId + 1, nil
+	}
+
+	return majorId, 0, nil
 }
