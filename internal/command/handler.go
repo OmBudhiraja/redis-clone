@@ -33,6 +33,7 @@ const (
 	CONFIG     = "CONFIG"
 	KEYS       = "KEYS"
 	TYPE       = "TYPE"
+	XADD       = "XADD"
 )
 
 func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.ServerConfig) []byte {
@@ -60,6 +61,8 @@ func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.Ser
 		response = handlePsyncCommand(cfg, conn)
 	case WAIT:
 		response = handleWaitCommand(cmds, cfg)
+	case XADD:
+		response = handleXAddCommand(cmds, kvStore)
 	case KEYS:
 		response = handleKeysCommand(cmds, kvStore)
 	case TYPE:
@@ -182,6 +185,24 @@ func handleWaitCommand(cmds []string, cfg *config.ServerConfig) []byte {
 
 }
 
+func handleXAddCommand(cmds []string, kvStore *store.Store) []byte {
+	if len(cmds) < 3 {
+		return parser.SerializeSimpleError("ERR wrong number of arguments for 'xadd' command")
+	}
+	streamKey := cmds[1]
+	entryId := cmds[2]
+
+	pairs := cmds[3:]
+
+	if len(pairs)%2 != 0 {
+		return parser.SerializeSimpleError("ERR wrong number of arguments for 'xadd' command")
+	}
+
+	kvStore.XAdd(streamKey, entryId, pairs)
+
+	return parser.SerializeBulkString(entryId)
+}
+
 func handleKeysCommand(cmds []string, kvStore *store.Store) []byte {
 	fmt.Println("keys command", cmds)
 
@@ -197,14 +218,7 @@ func handleTypeCommand(cmds []string, kvStore *store.Store) []byte {
 		return parser.SerializeSimpleError("ERR wrong number of arguments for 'type' command")
 	}
 
-	value := kvStore.Get(cmds[1])
-
-	if value == "" {
-		return parser.SerializeSimpleString("none")
-
-	}
-
-	return parser.SerializeSimpleString("string")
+	return parser.SerializeSimpleString(kvStore.GetDataType(cmds[1]))
 }
 
 func handlePsyncCommand(cfg *config.ServerConfig, currConnection net.Conn) (response []byte) {

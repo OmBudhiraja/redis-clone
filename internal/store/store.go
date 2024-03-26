@@ -4,17 +4,21 @@ import (
 	"sync"
 	"time"
 
-	"github.com/codecrafters-io/redis-starter-go/internal/rdb"
+	"github.com/codecrafters-io/redis-starter-go/internal/store/datatypes"
 )
 
+type Data interface {
+	GetType() string
+}
+
 type Store struct {
-	data  map[string]rdb.Entry
+	data  map[string]Data
 	mutex *sync.RWMutex
 }
 
-func New(file *rdb.RDBFile) *Store {
+func New() *Store {
 	return &Store{
-		data:  file.Items,
+		data:  make(map[string]Data),
 		mutex: &sync.RWMutex{},
 	}
 }
@@ -23,17 +27,41 @@ func (s *Store) Set(key, value string, expiry time.Time) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	s.data[key] = rdb.Entry{
-		Value:  value,
-		Expiry: expiry,
+	s.data[key] = &datatypes.String{
+		DataType: "string",
+		Value:    value,
+		Expiry:   expiry,
 	}
+}
+
+func (s *Store) XAdd(streamKey, entryId string, entries []string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	stream, ok := s.data[streamKey].(*datatypes.Stream)
+
+	if !ok {
+		stream = &datatypes.Stream{
+			DataType: "stream",
+			Values:   []*datatypes.Entry{},
+		}
+	}
+	stream.AddEntry(entryId, entries)
+	s.data[streamKey] = stream
+
 }
 
 func (s *Store) Get(key string) string {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	entry, ok := s.data[key]
+	e, ok := s.data[key]
+
+	if !ok {
+		return ""
+	}
+
+	entry, ok := e.(*datatypes.String)
 
 	if !ok {
 		return ""
@@ -49,6 +77,19 @@ func (s *Store) Get(key string) string {
 	}
 
 	return entry.Value
+}
+
+func (s *Store) GetDataType(key string) string {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	e, ok := s.data[key]
+
+	if !ok {
+		return "none"
+	}
+
+	return e.GetType()
 }
 
 func (s *Store) GetKeysWithPattern(pattern string) []string {

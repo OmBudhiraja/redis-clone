@@ -23,9 +23,11 @@ func main() {
 
 	fmt.Printf("Server starting as %s on port %s\n", serverConfig.Role, serverConfig.Port)
 
+	
+	kvStore := store.New()
+	
 	rdbFile := rdb.New(serverConfig)
-
-	kvStore := store.New(rdbFile)
+	rdbFile.Inject(kvStore)
 
 	l, err := net.Listen("tcp", "0.0.0.0:"+serverConfig.Port)
 	if err != nil {

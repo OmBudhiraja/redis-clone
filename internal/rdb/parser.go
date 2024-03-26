@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/codecrafters-io/redis-starter-go/internal/config"
+	"github.com/codecrafters-io/redis-starter-go/internal/store"
+	"github.com/codecrafters-io/redis-starter-go/internal/store/datatypes"
 )
 
 const (
@@ -24,13 +26,8 @@ const (
 	EMPTY_RDB_HEX = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2"
 )
 
-type Entry struct {
-	Value  string
-	Expiry time.Time
-}
-
 type RDBFile struct {
-	Items map[string]Entry
+	Items map[string]store.Data
 }
 
 func New(cfg *config.ServerConfig) *RDBFile {
@@ -38,7 +35,7 @@ func New(cfg *config.ServerConfig) *RDBFile {
 
 	// currently only supports single db
 	db := &RDBFile{
-		Items: make(map[string]Entry),
+		Items: make(map[string]store.Data),
 	}
 
 	if path == "" {
@@ -134,14 +131,24 @@ outerLoop:
 
 				// skip expired keys
 				if expiration.IsZero() || expiration.After(time.Now()) {
-					rdbFile.Items[key] = Entry{
-						Value:  value,
-						Expiry: expiration,
+					rdbFile.Items[key] = &datatypes.String{
+						DataType: "string",
+						Value:    value,
+						Expiry:   expiration,
 					}
 				}
 			default:
 				panic(fmt.Sprintf("unknown value type: %08b", valueType))
 			}
+		}
+	}
+}
+
+func (rdb *RDBFile) Inject(store *store.Store) {
+	for key, entry := range rdb.Items {
+		stringEntry, ok := entry.(*datatypes.String)
+		if ok {
+			store.Set(key, stringEntry.Value, stringEntry.Expiry)
 		}
 	}
 }
