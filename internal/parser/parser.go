@@ -61,7 +61,18 @@ func Deserialize(byteStream *bufio.Reader) (Message, error) {
 		if err == nil {
 			message.ReadBytes += n
 		}
+	case '/':
+		// help in testing locally with netcat
+		str, err := byteStream.ReadString('\n')
 
+		if err != nil {
+			fmt.Println("dev mode error:", err)
+		}
+
+		commands = append(commands, strings.Split(str, " ")...)
+
+		// strip \n from the last element
+		commands[len(commands)-1] = commands[len(commands)-1][:len(commands[len(commands)-1])-1]
 	}
 
 	message.Commands = commands

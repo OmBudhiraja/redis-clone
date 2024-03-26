@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -43,7 +44,7 @@ func (s *Store) XAdd(streamKey, entryId string, entries []string) (string, error
 	if !ok {
 		stream = &datatypes.Stream{
 			DataType: "stream",
-			Values:   []*datatypes.Entry{},
+			Values:   make([]datatypes.Entry, 0),
 		}
 	}
 	id, err := stream.AddEntry(entryId, entries)
@@ -54,6 +55,22 @@ func (s *Store) XAdd(streamKey, entryId string, entries []string) (string, error
 
 	s.data[streamKey] = stream
 	return id, nil
+}
+
+func (s *Store) XRange(streamKey, startId, endId string) ([]datatypes.Entry, error) {
+
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	stream, ok := s.data[streamKey].(*datatypes.Stream)
+
+	if !ok {
+		return nil, errors.New("ERR no such stream key")
+	}
+
+	entries, err := stream.GetRange(startId, endId)
+
+	return entries, err
 }
 
 func (s *Store) Get(key string) string {

@@ -34,6 +34,7 @@ const (
 	KEYS       = "KEYS"
 	TYPE       = "TYPE"
 	XADD       = "XADD"
+	XRANGE     = "XRANGE"
 )
 
 func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.ServerConfig) []byte {
@@ -63,6 +64,8 @@ func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.Ser
 		response = handleWaitCommand(cmds, cfg)
 	case XADD:
 		response = handleXAddCommand(cmds, kvStore)
+	case XRANGE:
+		response = handleXRangeCommand(cmds, kvStore)
 	case KEYS:
 		response = handleKeysCommand(cmds, kvStore)
 	case TYPE:
@@ -206,6 +209,34 @@ func handleXAddCommand(cmds []string, kvStore *store.Store) []byte {
 	}
 
 	return parser.SerializeBulkString(id)
+}
+
+func handleXRangeCommand(cmds []string, kvStore *store.Store) []byte {
+
+	if len(cmds) != 4 {
+		return parser.SerializeSimpleError("ERR wrong number of arguments for 'xrange' command")
+	}
+
+	entries, err := kvStore.XRange(cmds[1], cmds[2], cmds[3])
+
+	if err != nil {
+		return parser.SerializeSimpleError(err.Error())
+	}
+
+	result := []string{}
+
+	for _, entry := range entries {
+		value := []string{}
+		for k, v := range entry.Values {
+			value = append(value, k, v)
+		}
+		pairsArray := parser.SerializeArray(value)
+
+		entryArray := fmt.Sprintf("*2\r\n$%d\r\n%s\r\n%s", len(entry.Id), entry.Id, string(pairsArray))
+		result = append(result, entryArray)
+	}
+
+	return []byte(fmt.Sprintf("*%d\r\n%s", len(result), strings.Join(result, "")))
 }
 
 func handleKeysCommand(cmds []string, kvStore *store.Store) []byte {
