@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Entry struct {
@@ -49,7 +50,8 @@ func (s *Stream) AddEntry(entryId string, pairs []string) (string, error) {
 func (s *Stream) parseEntryId(id string) (int, int, error) {
 
 	if id == "*" {
-		return s.generateNewEntryId()
+		majorId, minorId := s.generateNewEntryId()
+		return majorId, minorId, nil
 	}
 
 	entryId := strings.Split(id, "-")
@@ -95,15 +97,30 @@ func (s *Stream) parseEntryId(id string) (int, int, error) {
 
 	if majorId == lastEntry.majorId && minorId <= lastEntry.minorId {
 		// return 0, 0, errors.New("The ID specified in XADD is equal or smaller than the target stream top item")
-		return 0, 0, fmt.Errorf("ERR The ID specified in XADD is equal or smaller than the target stream top item")
+		return 0, 0, errors.New("ERR The ID specified in XADD is equal or smaller than the target stream top item")
 	}
 
 	return majorId, minorId, nil
 }
 
-func (s *Stream) generateNewEntryId() (int, int, error) {
-	// TODO: Implement this
-	return 0, 0, nil
+func (s *Stream) generateNewEntryId() (int, int) {
+	majorId := int(time.Now().UnixMilli())
+
+	if len(s.Values) == 0 {
+		return majorId, 0
+	}
+
+	lastEntry := s.Values[len(s.Values)-1]
+
+	if lastEntry == nil {
+		panic("last entry is nil??")
+	}
+
+	if majorId > lastEntry.majorId {
+		return majorId, 0
+	}
+
+	return lastEntry.majorId, lastEntry.minorId + 1
 }
 
 func (s *Stream) generateMinorEntryId(majorId int) (int, int, error) {
@@ -122,7 +139,7 @@ func (s *Stream) generateMinorEntryId(majorId int) (int, int, error) {
 	}
 
 	if majorId < lastEntry.majorId {
-		return 0, 0, fmt.Errorf("ERR The ID specified in XADD is equal or smaller than the target stream top item")
+		return 0, 0, errors.New("ERR The ID specified in XADD is equal or smaller than the target stream top item")
 	}
 
 	if majorId == lastEntry.majorId {
