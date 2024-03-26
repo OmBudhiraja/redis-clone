@@ -198,7 +198,12 @@ func handleXAddCommand(cmds []string, kvStore *store.Store) []byte {
 		return parser.SerializeSimpleError("ERR wrong number of arguments for 'xadd' command")
 	}
 
-	kvStore.XAdd(streamKey, entryId, pairs)
+	err := kvStore.XAdd(streamKey, entryId, pairs)
+
+	if err != nil {
+		return parser.SerializeSimpleError(err.Error())
+
+	}
 
 	return parser.SerializeBulkString(entryId)
 }
