@@ -265,7 +265,7 @@ func handleXReadCommand(cmds []string, kvStore *store.Store) []byte {
 	streamKeys := cmds[streamKeysIdx+1:]
 
 	count := 1
-	block := 0
+	block := -1
 
 	if len(args)%2 != 0 || len(streamKeys)%2 != 0 {
 		return parser.SerializeSimpleError("ERR wrong number of arguments for 'xread' command")
@@ -287,13 +287,25 @@ func handleXReadCommand(cmds []string, kvStore *store.Store) []byte {
 		}
 	}
 
+	var ctx context.Context
+	var ctxCancel context.CancelFunc
+
+	if block == -1 || block == 0 {
+		ctx = context.Background()
+	} else {
+		ctx, ctxCancel = context.WithTimeout(context.Background(), time.Duration(block)*time.Millisecond)
+		defer ctxCancel()
+	}
+
 	result := []string{}
 
 	for i := 0; i < len(streamKeys)/2; i++ {
 		streamKey := streamKeys[i]
 		entryId := streamKeys[i+len(streamKeys)/2]
 
-		entries, err := kvStore.XRead(streamKey, entryId, count, block)
+		entries, err := kvStore.XRead(streamKey, entryId, count, block, ctx)
+
+		fmt.Println("entries returned", entries, err)
 
 		if err != nil {
 			return parser.SerializeSimpleError(err.Error())

@@ -1,10 +1,10 @@
 package datatypes
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
-	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -20,7 +20,7 @@ type Entry struct {
 type Stream struct {
 	DataType    string
 	Values      []Entry
-	Subscribers []net.Conn
+	Subscribers map[string]chan string
 }
 
 func (s *Stream) GetType() string {
@@ -47,6 +47,14 @@ func (s *Stream) AddEntry(entryId string, pairs []string) (string, error) {
 	}
 
 	s.Values = append(s.Values, entry)
+
+	go func() {
+		fmt.Println("Sending update to subscribers", s.Subscribers)
+		for _, subscriber := range s.Subscribers {
+			subscriber <- "update"
+		}
+	}()
+
 	return entry.Id, nil
 }
 
@@ -95,7 +103,7 @@ func (s *Stream) GetRange(startId, endId string) ([]Entry, error) {
 }
 
 // entryId is exlusive
-func (s *Stream) ReadEntry(entryId string, count int) ([]Entry, error) {
+func (s *Stream) ReadEntry(entryId string, count int, ctx context.Context) ([]Entry, error) {
 
 	majorId, minorId, err := s.parseEntryIdForRange(entryId, true)
 
@@ -106,15 +114,14 @@ func (s *Stream) ReadEntry(entryId string, count int) ([]Entry, error) {
 	var entries []Entry
 
 	for _, entry := range s.Values {
-		if entry.majorId > majorId && entry.minorId > minorId {
+		if entry.majorId > majorId {
 			entries = append(entries, entry)
-			count--
+
 		} else if entry.majorId == majorId && entry.minorId > minorId && minorId != math.MinInt {
 			entries = append(entries, entry)
-			count--
 		}
 
-		if count == 0 {
+		if len(entries) == count {
 			break
 		}
 	}

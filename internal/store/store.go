@@ -1,7 +1,10 @@
 package store
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -43,8 +46,9 @@ func (s *Store) XAdd(streamKey, entryId string, entries []string) (string, error
 
 	if !ok {
 		stream = &datatypes.Stream{
-			DataType: "stream",
-			Values:   make([]datatypes.Entry, 0),
+			DataType:    "stream",
+			Values:      make([]datatypes.Entry, 0),
+			Subscribers: make(map[string]chan string),
 		}
 	}
 	id, err := stream.AddEntry(entryId, entries)
@@ -73,17 +77,65 @@ func (s *Store) XRange(streamKey, startId, endId string) ([]datatypes.Entry, err
 	return entries, err
 }
 
-func (s *Store) XRead(streamKey, entryId string, count, block int) ([]datatypes.Entry, error) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+func (s *Store) XRead(streamKey, entryId string, count, block int, ctx context.Context) ([]datatypes.Entry, error) {
 
 	stream, ok := s.data[streamKey].(*datatypes.Stream)
 
 	if !ok {
 		return nil, errors.New("ERR no such stream key")
 	}
+	randomSubscriberKey := randomString()
+	stream.Subscribers[randomSubscriberKey] = make(chan string)
 
-	return stream.ReadEntry(entryId, count)
+	if entryId == "$" {
+		if len(stream.Values) == 0 {
+			entryId = "0-0"
+		} else {
+			lastEntry := stream.Values[len(stream.Values)-1]
+			entryId = lastEntry.Id
+		}
+	}
+
+	// block arg not passed
+	if block == -1 {
+		return stream.ReadEntry(entryId, count, ctx)
+	}
+
+	// block indefinitely
+	resultEntries := []datatypes.Entry{}
+
+	if block == 0 {
+		for {
+			entries, err := stream.ReadEntry(entryId, count, ctx)
+
+			fmt.Println("block 0 entries read", entries)
+
+			if err != nil {
+				return nil, err
+			}
+
+			if len(entries) > 0 {
+				entryId = entries[len(entries)-1].Id
+				resultEntries = append(resultEntries, entries...)
+			}
+
+			if len(entries) == count {
+				break
+			}
+
+			count -= len(entries)
+
+			<-stream.Subscribers[randomSubscriberKey]
+		}
+
+		close(stream.Subscribers[randomSubscriberKey])
+		delete(stream.Subscribers, randomSubscriberKey)
+
+		return resultEntries, nil
+	}
+
+	return stream.ReadEntry(entryId, count, ctx)
+
 }
 
 func (s *Store) Get(key string) string {
@@ -141,4 +193,26 @@ func (s *Store) GetKeysWithPattern(pattern string) []string {
 	}
 
 	return keys
+}
+
+func randomString() string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	// Convert charset string to byte slice
+	charsetBytes := []byte(charset)
+
+	// Create a byte slice to hold the random bytes
+	randomBytes := make([]byte, 10)
+
+	// Read random bytes from the crypto/rand package
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		panic(err)
+	}
+
+	// Convert random bytes to string using the charset
+	for i := 0; i < 10; i++ {
+		randomBytes[i] = charsetBytes[int(randomBytes[i])%len(charsetBytes)]
+	}
+
+	return fmt.Sprintf("%d", time.Now().UnixMilli()) + string(randomBytes)
 }

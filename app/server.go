@@ -23,9 +23,8 @@ func main() {
 
 	fmt.Printf("Server starting as %s on port %s\n", serverConfig.Role, serverConfig.Port)
 
-	
 	kvStore := store.New()
-	
+
 	rdbFile := rdb.New(serverConfig)
 	rdbFile.Inject(kvStore)
 
@@ -72,7 +71,7 @@ func handleClient(conn net.Conn, kvStore *store.Store, serverConfig *config.Serv
 			break
 		}
 
-		fmt.Println("Commands: ", message.Commands)
+		fmt.Println("Commands: ", message.Commands, conn.RemoteAddr().String())
 
 		if len(message.Commands) == 0 {
 			continue
