@@ -93,18 +93,26 @@ func (s *Stream) GetRange(startId, endId string) ([]Entry, error) {
 }
 
 // returns majorId, minorId, error.
-// if forStart is true, then it will return -1 for minorId if it is not present.
+// if forStart is true, then it will return minInt for minorId if it is not present.
 // if forStart is false, then it will return maxInt for minorId if it is present.
 func (s *Stream) parseEntryIdForRange(id string, forStart bool) (int, int, error) {
 
 	var majorId, minorId int
 	var err error
 
+	if id == "-" {
+		if forStart {
+			return math.MinInt, math.MinInt, nil
+		} else {
+			return 0, 0, errors.New("ERR end id cannot be '-'")
+		}
+	}
+
 	entryId := strings.Split(id, "-")
 
 	if len(entryId) == 1 {
 		if forStart {
-			minorId = -1
+			minorId = math.MinInt
 		} else {
 			minorId = math.MaxInt
 		}
@@ -113,14 +121,14 @@ func (s *Stream) parseEntryIdForRange(id string, forStart bool) (int, int, error
 		minorId, err = strconv.Atoi(entryId[1])
 
 		if err != nil {
-			return -1, -1, errors.New("ERR Invalid entry id")
+			return 0, 0, errors.New("ERR Invalid entry id")
 		}
 	}
 
 	majorId, err = strconv.Atoi(entryId[0])
 
 	if err != nil {
-		return -1, -1, errors.New("ERR Invalid entry id")
+		return 0, 0, errors.New("ERR Invalid entry id")
 	}
 
 	return majorId, minorId, nil
