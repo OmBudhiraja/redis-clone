@@ -77,7 +77,7 @@ func (s *Store) XRange(streamKey, startId, endId string) ([]datatypes.Entry, err
 	return entries, err
 }
 
-func (s *Store) XRead(streamKey, entryId string, count, block int, ctx context.Context) ([]datatypes.Entry, error) {
+func (s *Store) XRead(streamKey, entryId string, count, block int, ctx context.Context, ctxCancel context.CancelFunc) ([]datatypes.Entry, error) {
 
 	stream, ok := s.data[streamKey].(*datatypes.Stream)
 
@@ -98,43 +98,51 @@ func (s *Store) XRead(streamKey, entryId string, count, block int, ctx context.C
 
 	// block arg not passed
 	if block == -1 {
-		return stream.ReadEntry(entryId, count, ctx)
+		return stream.ReadEntry(entryId, count)
 	}
 
-	// block indefinitely
 	resultEntries := []datatypes.Entry{}
 
-	if block == 0 {
-		for {
-			entries, err := stream.ReadEntry(entryId, count, ctx)
+	// close the subscriber channel when the context is done
+	go func() {
+		<-ctx.Done()
 
-			fmt.Println("block 0 entries read", entries)
+		if _, ok := stream.Subscribers[randomSubscriberKey]; ok {
+			stream.Subscribers[randomSubscriberKey] <- "done"
+		}
+	}()
 
-			if err != nil {
-				return nil, err
-			}
+	for {
+		entries, err := stream.ReadEntry(entryId, count)
 
-			if len(entries) > 0 {
-				entryId = entries[len(entries)-1].Id
-				resultEntries = append(resultEntries, entries...)
-			}
-
-			if len(entries) == count {
-				break
-			}
-
-			count -= len(entries)
-
-			<-stream.Subscribers[randomSubscriberKey]
+		if err != nil {
+			return nil, err
 		}
 
-		close(stream.Subscribers[randomSubscriberKey])
-		delete(stream.Subscribers, randomSubscriberKey)
+		if len(entries) > 0 {
+			entryId = entries[len(entries)-1].Id
+			resultEntries = append(resultEntries, entries...)
+		}
 
-		return resultEntries, nil
+		if len(entries) == count {
+			break
+		}
+
+		count -= len(entries)
+
+		res := <-stream.Subscribers[randomSubscriberKey]
+
+		if res == "done" {
+			break
+		}
 	}
 
-	return stream.ReadEntry(entryId, count, ctx)
+	close(stream.Subscribers[randomSubscriberKey])
+	delete(stream.Subscribers, randomSubscriberKey)
+
+	ctxCancel()
+
+	return resultEntries, nil
 
 }
 

@@ -71,7 +71,7 @@ func handleClient(conn net.Conn, kvStore *store.Store, serverConfig *config.Serv
 			break
 		}
 
-		fmt.Println("Commands: ", message.Commands, conn.RemoteAddr().String())
+		fmt.Println("Commands: ", message.Commands)
 
 		if len(message.Commands) == 0 {
 			continue

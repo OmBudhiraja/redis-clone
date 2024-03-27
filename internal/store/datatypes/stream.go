@@ -1,7 +1,6 @@
 package datatypes
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -103,7 +102,7 @@ func (s *Stream) GetRange(startId, endId string) ([]Entry, error) {
 }
 
 // entryId is exlusive
-func (s *Stream) ReadEntry(entryId string, count int, ctx context.Context) ([]Entry, error) {
+func (s *Stream) ReadEntry(entryId string, count int) ([]Entry, error) {
 
 	majorId, minorId, err := s.parseEntryIdForRange(entryId, true)
 

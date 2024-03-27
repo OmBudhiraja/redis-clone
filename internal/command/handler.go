@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/codecrafters-io/redis-starter-go/internal/config"
@@ -290,43 +291,66 @@ func handleXReadCommand(cmds []string, kvStore *store.Store) []byte {
 	var ctx context.Context
 	var ctxCancel context.CancelFunc
 
-	if block == -1 || block == 0 {
+	if block == -1 {
 		ctx = context.Background()
+	} else if block == 0 {
+		ctx, ctxCancel = context.WithCancel(context.Background())
 	} else {
 		ctx, ctxCancel = context.WithTimeout(context.Background(), time.Duration(block)*time.Millisecond)
 		defer ctxCancel()
 	}
 
-	result := []string{}
+	streamArr := make([]string, len(streamKeys)/2)
+	wg := sync.WaitGroup{}
 
 	for i := 0; i < len(streamKeys)/2; i++ {
 		streamKey := streamKeys[i]
 		entryId := streamKeys[i+len(streamKeys)/2]
+		wg.Add(1)
 
-		entries, err := kvStore.XRead(streamKey, entryId, count, block, ctx)
+		go func(i int) {
+			defer wg.Done()
+			entries, err := kvStore.XRead(streamKey, entryId, count, block, ctx, ctxCancel)
 
-		fmt.Println("entries returned", entries, err)
-
-		if err != nil {
-			return parser.SerializeSimpleError(err.Error())
-		}
-
-		entriesArray := []string{}
-
-		for _, entry := range entries {
-			value := []string{}
-			for k, v := range entry.Values {
-				value = append(value, k, v)
+			fmt.Println("entries returned", entries, err)
+			if err != nil {
+				return
 			}
-			pairsArray := parser.SerializeArray(value)
-			entryArray := fmt.Sprintf("*2\r\n%s%s", string(parser.SerializeBulkString(entry.Id)), string(pairsArray))
 
-			entriesArray = append(entriesArray, entryArray)
+			entriesArray := []string{}
+
+			for _, entry := range entries {
+				value := []string{}
+				for k, v := range entry.Values {
+					value = append(value, k, v)
+				}
+				pairsArray := parser.SerializeArray(value)
+				entryArray := fmt.Sprintf("*2\r\n%s%s", string(parser.SerializeBulkString(entry.Id)), string(pairsArray))
+
+				entriesArray = append(entriesArray, entryArray)
+			}
+			if len(entriesArray) == 0 {
+				return
+			}
+			entriesResult := fmt.Sprintf("*%d\r\n%s", len(entriesArray), strings.Join(entriesArray, ""))
+			streamResult := fmt.Sprintf("*2\r\n%s%s", string(parser.SerializeBulkString(streamKey)), entriesResult)
+			streamArr[i] = streamResult
+		}(i)
+
+	}
+
+	wg.Wait()
+
+	result := []string{}
+
+	for _, stream := range streamArr {
+		if stream != "" {
+			result = append(result, stream)
 		}
+	}
 
-		entriesResult := fmt.Sprintf("*%d\r\n%s", len(entriesArray), strings.Join(entriesArray, ""))
-		streamResult := fmt.Sprintf("*2\r\n%s%s", string(parser.SerializeBulkString(streamKey)), entriesResult)
-		result = append(result, streamResult)
+	if len(result) == 0 {
+		return parser.SerializeBulkString("")
 	}
 
 	return []byte(fmt.Sprintf("*%d\r\n%s", len(result), strings.Join(result, "")))
