@@ -106,6 +106,12 @@ func (s *Stream) parseEntryIdForRange(id string, forStart bool) (int, int, error
 		} else {
 			return 0, 0, errors.New("ERR end id cannot be '-'")
 		}
+	} else if id == "+" {
+		if forStart {
+			return 0, 0, errors.New("ERR start id cannot be '+'")
+		} else {
+			return math.MaxInt, math.MaxInt, nil
+		}
 	}
 
 	entryId := strings.Split(id, "-")
