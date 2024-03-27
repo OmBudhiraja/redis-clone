@@ -73,6 +73,19 @@ func (s *Store) XRange(streamKey, startId, endId string) ([]datatypes.Entry, err
 	return entries, err
 }
 
+func (s *Store) XRead(streamKey, entryId string, count, block int) ([]datatypes.Entry, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	stream, ok := s.data[streamKey].(*datatypes.Stream)
+
+	if !ok {
+		return nil, errors.New("ERR no such stream key")
+	}
+
+	return stream.ReadEntry(entryId, count)
+}
+
 func (s *Store) Get(key string) string {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()

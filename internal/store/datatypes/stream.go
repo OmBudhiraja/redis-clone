@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -17,8 +18,9 @@ type Entry struct {
 }
 
 type Stream struct {
-	DataType string
-	Values   []Entry
+	DataType    string
+	Values      []Entry
+	Subscribers []net.Conn
 }
 
 func (s *Stream) GetType() string {
@@ -86,6 +88,34 @@ func (s *Stream) GetRange(startId, endId string) ([]Entry, error) {
 			if entry.minorId >= startMinorId && entry.minorId <= endMinorId {
 				entries = append(entries, entry)
 			}
+		}
+	}
+
+	return entries, nil
+}
+
+// entryId is exlusive
+func (s *Stream) ReadEntry(entryId string, count int) ([]Entry, error) {
+
+	majorId, minorId, err := s.parseEntryIdForRange(entryId, true)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []Entry
+
+	for _, entry := range s.Values {
+		if entry.majorId > majorId && entry.minorId > minorId {
+			entries = append(entries, entry)
+			count--
+		} else if entry.majorId == majorId && entry.minorId > minorId && minorId != math.MinInt {
+			entries = append(entries, entry)
+			count--
+		}
+
+		if count == 0 {
+			break
 		}
 	}
 

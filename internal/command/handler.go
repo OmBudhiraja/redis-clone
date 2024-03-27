@@ -35,6 +35,7 @@ const (
 	TYPE       = "TYPE"
 	XADD       = "XADD"
 	XRANGE     = "XRANGE"
+	XREAD      = "XREAD"
 )
 
 func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.ServerConfig) []byte {
@@ -66,6 +67,8 @@ func Handler(cmds []string, conn net.Conn, kvStore *store.Store, cfg *config.Ser
 		response = handleXAddCommand(cmds, kvStore)
 	case XRANGE:
 		response = handleXRangeCommand(cmds, kvStore)
+	case XREAD:
+		response = handleXReadCommand(cmds, kvStore)
 	case KEYS:
 		response = handleKeysCommand(cmds, kvStore)
 	case TYPE:
@@ -232,8 +235,86 @@ func handleXRangeCommand(cmds []string, kvStore *store.Store) []byte {
 		}
 		pairsArray := parser.SerializeArray(value)
 
-		entryArray := fmt.Sprintf("*2\r\n$%d\r\n%s\r\n%s", len(entry.Id), entry.Id, string(pairsArray))
+		entryArray := fmt.Sprintf("*2\r\n%s%s", string(parser.SerializeBulkString(entry.Id)), string(pairsArray))
 		result = append(result, entryArray)
+	}
+
+	return []byte(fmt.Sprintf("*%d\r\n%s", len(result), strings.Join(result, "")))
+}
+
+func handleXReadCommand(cmds []string, kvStore *store.Store) []byte {
+
+	if len(cmds) < 4 {
+		return parser.SerializeSimpleError("ERR wrong number of arguments for 'xread' command")
+	}
+
+	var streamKeysIdx int
+
+	for i, cmd := range cmds {
+		if strings.ToUpper(cmd) == "STREAMS" {
+			streamKeysIdx = i
+			break
+		}
+	}
+
+	if streamKeysIdx == 0 {
+		return parser.SerializeSimpleError("ERR streams key not included in 'xread' command")
+	}
+
+	args := cmds[1:streamKeysIdx]
+	streamKeys := cmds[streamKeysIdx+1:]
+
+	count := 1
+	block := 0
+
+	if len(args)%2 != 0 || len(streamKeys)%2 != 0 {
+		return parser.SerializeSimpleError("ERR wrong number of arguments for 'xread' command")
+
+	}
+
+	for i := 0; i < len(args); i += 2 {
+		var err error
+		if strings.ToUpper(args[i]) == "COUNT" {
+			count, err = strconv.Atoi(args[i+1])
+		} else if strings.ToUpper(args[i]) == "BLOCK" {
+			block, err = strconv.Atoi(args[i+1])
+		} else {
+			return parser.SerializeSimpleError("ERR unknown agrument for 'xread' command: " + args[i])
+		}
+
+		if err != nil {
+			return parser.SerializeSimpleError("ERR invalid argument for 'xread' command")
+		}
+	}
+
+	result := []string{}
+
+	for i := 0; i < len(streamKeys)/2; i++ {
+		streamKey := streamKeys[i]
+		entryId := streamKeys[i+len(streamKeys)/2]
+
+		entries, err := kvStore.XRead(streamKey, entryId, count, block)
+
+		if err != nil {
+			return parser.SerializeSimpleError(err.Error())
+		}
+
+		entriesArray := []string{}
+
+		for _, entry := range entries {
+			value := []string{}
+			for k, v := range entry.Values {
+				value = append(value, k, v)
+			}
+			pairsArray := parser.SerializeArray(value)
+			entryArray := fmt.Sprintf("*2\r\n%s%s", string(parser.SerializeBulkString(entry.Id)), string(pairsArray))
+
+			entriesArray = append(entriesArray, entryArray)
+		}
+
+		entriesResult := fmt.Sprintf("*%d\r\n%s", len(entriesArray), strings.Join(entriesArray, ""))
+		streamResult := fmt.Sprintf("*2\r\n%s%s", string(parser.SerializeBulkString(streamKey)), entriesResult)
+		result = append(result, streamResult)
 	}
 
 	return []byte(fmt.Sprintf("*%d\r\n%s", len(result), strings.Join(result, "")))
