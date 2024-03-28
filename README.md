@@ -1,34 +1,35 @@
-[![progress-banner](https://backend.codecrafters.io/progress/redis/76883a49-f31e-4df1-a954-5146c6f733df)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+# Go Redis
 
-This is a starting point for Go solutions to the
-["Build Your Own Redis" Challenge](https://codecrafters.io/challenges/redis).
+A simple Redis server with GoLang
 
-In this challenge, you'll build a toy Redis clone that's capable of handling
-basic commands like `PING`, `SET` and `GET`. Along the way we'll learn about
-event loops, the Redis protocol and more.
+## Features
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+- [X] Concurrent connections
+- [X] Ping command
+- [X] Echo command
+- [X] Get and Set commands
+- [X] Data expiration
+- [X] Replication
+- [X] RDB Persistance
+- [X] Streams Support
 
-# Passing the first stage
+## Resources
 
-The entry point for your Redis implementation is in `app/server.go`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
+- [Build your own Redis](https://app.codecrafters.io/courses/redis/overview?_gl=1*unh9pm*_ga*MTIxODMxNTYxNi4xNzA5ODE3OTE2*_ga_N8D6K4M2HE*MTcxMDA2OTQ4OS4xMC4xLjE3MTAwNzExNjEuMC4wLjA.)
 
-```sh
-git add .
-git commit -m "pass 1st stage" # any msg
-git push origin master
+- [Redis serialization protocol specification](https://redis.io/docs/reference/protocol-spec/#resp-simple-strings)
+
+- [Redis replication](https://redis.io/docs/management/replication)
+
+- [Redis RDB File Format](https://rdb.fnordig.de/file_format.html)
+
+- [Redis Streams](https://redis.io/docs/data-types/streams/)
+
+### Run locally
+
+```bash
+go build -o redis-server ./app/server.go
+
+./redis-server # starts as master on default port 6379
+./redis-server --port 6380 --replicaof localhost 6379 # starts as replica on port 6380
 ```
-
-That's all!
-
-# Stage 2 & beyond
-
-Note: This section is for stages 2 and beyond.
-
-1. Ensure you have `go (1.19)` installed locally
-1. Run `./spawn_redis_server.sh` to run your Redis server, which is implemented
-   in `app/server.go`.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.

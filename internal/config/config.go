@@ -52,7 +52,7 @@ func (c *ServerConfig) GetRDBFilePath() string {
 
 func New() *ServerConfig {
 	port := flag.String("port", "6379", "Port to bind to")
-	masterHost := flag.String("replicaof", "", "Host of master server")
+	masterHost := flag.String("replicaof", "", "masterHost masterPort")
 
 	rdbFileDir := flag.String("dir", "", "Directory to store RDB file")
 	rdbFileName := flag.String("dbfilename", "", "Name of RDB file")
